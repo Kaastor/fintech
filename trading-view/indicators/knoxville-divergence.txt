@@ -1,0 +1,93 @@
+//@version=3
+study("Knoxville Divergence", overlay=true)
+//-------------------------
+// Knoxville Divergence with Reversal Tabs
+//-------------------------
+KnoxRSILength      = input(title="Knoxville RSI",            defval=17, type=integer)
+KnoxMOMLength      = input(title="Knoxville Mom",            defval=20, type=integer)
+KnoxDivergence     = input(true, title="Knoxville Divergences")
+KnoxLabel          = input(true, title="Knoxville Divergence Labels")
+KnoxTriangle       = input(true, title="Knoxville Divergence Triangles")
+
+ReversalTabs       = input(true,  title="Reversal Tabs")
+macd_fast_period   = input(title="Reversal Tabs - MACD Fast Period",            defval=12, type=integer)
+macd_slow_period   = input(title="Reversal Tabs - MACD Slow Period",            defval=26, type=integer)
+macd_signal_period = input(title="Reversal Tabs - MACD Signal Period",          defval=9, type=integer)
+
+stoch_period       = input(title="Reversal Tabs - Stochastic RSI Period",       defval=70, type=integer)
+prc_k_period       = input(title="Reversal Tabs - %K Period", defval=30, type=integer)
+prc_d_period       = input(title="Reversal Tabs - %D Period", defval=30, type=integer)
+stoch_ob           = input(title="Reversal Tabs - Stochastic Overbought Level", defval=70, type=integer)
+stoch_os           = input(title="Reversal Tabs - Stochastic Oversold Level",   defval=30, type=integer)
+
+
+KnoxRSI = rsi(close,KnoxRSILength)
+KnoxMOM = mom(close,KnoxMOMLength)
+
+KnoxRSIOB = KnoxRSI > 70 ? 1 : 0
+
+KnoxRSIOS = KnoxRSI < 30 ? 1 : 0
+//------------------------------
+//@RicardoSantos' Divergence Script
+
+f_top_fractal(_src)=>_src[4] < _src[2] and _src[3] < _src[2] and _src[2] > _src[1] and _src[2] > _src[0]
+f_bot_fractal(_src)=>_src[4] > _src[2] and _src[3] > _src[2] and _src[2] < _src[1] and _src[2] < _src[0]
+f_fractalize(_src)=>f_top_fractal(_src) ? 1 : f_bot_fractal(_src) ? -1 : 0
+
+fractal_top_knox = f_fractalize(KnoxMOM) > 0 ? KnoxMOM[2] : na
+fractal_bot_knox = f_fractalize(KnoxMOM) < 0 ? KnoxMOM[2] : na
+
+high_prev_knox  = valuewhen(fractal_top_knox, KnoxMOM[2], 0)[2]
+high_price_knox = valuewhen(fractal_top_knox, high[2], 0)[2]
+low_prev_knox   = valuewhen(fractal_bot_knox, KnoxMOM[2], 0)[2]
+low_price_knox  = valuewhen(fractal_bot_knox, low[2], 0)[2]
+
+
+knoxville_bearish_div = fractal_top_knox and KnoxRSIOB and high[2] > high_price_knox and KnoxMOM[2] < high_prev_knox
+knoxville_bullish_div = fractal_bot_knox and KnoxRSIOS and low[2]  < low_price_knox  and KnoxMOM[2] > low_prev_knox
+
+
+//-------------------------
+
+KnoxColor = knoxville_bearish_div ? #FA0000FA  : knoxville_bullish_div ? #00FF00FA: na
+
+plot(title='Knoxville - Bearish Divergence Lines', series = KnoxDivergence and fractal_top_knox ? high[2] : na, color=KnoxColor, linewidth=5, offset=-2)
+plot(title='Knoxville - Bullish Divergence Lines', series = KnoxDivergence and fractal_bot_knox ? low[2]  : na, color=KnoxColor, linewidth=5, offset=-2)
+
+// Labels
+plotshape(title='Knoxville - Label - Bearish Divergence - Label', series = KnoxLabel and knoxville_bearish_div ? close[2] : na, text='Knox',   style=shape.labeldown, location=location.abovebar, color=#FF000010, textcolor=#008000FA, offset=-2)
+plotshape(title='Knoxville - Label - Bullish Divergence - Label', series = KnoxLabel and knoxville_bullish_div ? close[2] : na, text='Knox',   style=shape.labelup,   location=location.belowbar, color=#00800010, textcolor=#008000FA, offset=-2)
+
+// Triangles
+plotshape(title='Knoxville - Triangle - Bearish Divergence - Triangles', series = KnoxTriangle and knoxville_bearish_div ? close[2] : na, text='', style=shape.triangledown, location=location.abovebar, color=#008000FA,  textcolor=#000000FA,   offset=-2)
+plotshape(title='Knoxville - Triangle - Bullish Divergence - Triangles', series = KnoxTriangle and knoxville_bullish_div ? close[2] : na, text='', style=shape.triangleup,   location=location.belowbar, color=#008000FA,  textcolor=#000000FA,   offset=-2)
+
+alertcondition(knoxville_bearish_div, title='Alert - Knoxville Bearish Divergence', message='Alert - Knoxville Bearish Divergence!')
+alertcondition(knoxville_bullish_div, title='Alert - Knoxville Bullish Divergence', message='Alert - Knoxville Bearish Divergence!')
+
+
+// Bob Rooker Reversal Tabs Script
+
+
+[macd_line, signal_line, hist_line] = macd(close, macd_fast_period, macd_slow_period, macd_signal_period)
+
+fast_prc_k         = 100*(close - lowest(low, stoch_period))/(highest(high, stoch_period) - lowest(low, stoch_period))
+fast_prc_d         = sma(fast_prc_k, prc_d_period)
+
+slow_prc_k         = sma(fast_prc_k, prc_k_period)
+slow_prc_d         = sma(slow_prc_k, prc_d_period)
+
+full_prc_k         = sma(fast_prc_k, prc_k_period)
+full_prc_d         = sma(full_prc_k, prc_d_period)
+
+is_buy_reversal    = crossover(macd_line,  0)  and full_prc_k < stoch_os
+is_sell_reversal   = crossunder(macd_line, 0)  and full_prc_k > stoch_ob
+
+plotshape(title = 'Reversal Tab', series = ReversalTabs? is_buy_reversal:  na, style=shape.triangleup,   color=green, size=size.small, location=location.belowbar)
+plotshape(title = 'Reversal Tab', series = ReversalTabs? is_sell_reversal: na, style=shape.triangledown, color=red,   size=size.small, location=location.abovebar)
+
+alertcondition(is_buy_reversal,  title='Alert - Buy Reversal Tab',  message='Reversal Tab BUY ALERT!')
+alertcondition(is_sell_reversal, title='Alert - Sell Reversal Tab', message='Reversal Tab SELL ALERT!')
+
+alertcondition(is_sell_reversal or is_buy_reversal, title='Alert - Buy or Sell Reversal Tab', message='Reversal Tab BUY OR SELL ALERT!')
+
