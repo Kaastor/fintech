@@ -1,11 +1,46 @@
+from datetime import timedelta
+
 import pandas as pd
 import numpy as np
 import yfinance as yf
 import matplotlib.pyplot as plt
+from scipy.signal import argrelextrema
+import matplotlib.patches as patches
+
+window = 20  # Define the window for local maxima and minima detection
+volume_threshold = None
 
 
 def calculate_smma(data, window):
-    return data.ewm(alpha=1/window, adjust=False).mean()
+    return data.ewm(alpha=1 / window, adjust=False).mean()
+
+
+def calculate_supply_demand_zones(data, window, volume_threshold):
+    # Create subsets where volume is greater than volume_threshold
+    high_vol_data = data.loc[data['Volume'] > volume_threshold]
+
+    # Find local peaks (supply zones)
+    high_vol_data['supply'] = high_vol_data['High'].iloc[
+        argrelextrema(high_vol_data['High'].values, np.greater_equal, order=window)[0]]
+
+    # Find local troughs (demand zones)
+    high_vol_data['demand'] = high_vol_data['Low'].iloc[
+        argrelextrema(high_vol_data['Low'].values, np.less_equal, order=window)[0]]
+
+    # Copy supply and demand zones to original data
+    data['supply'] = high_vol_data['supply']
+    data['demand'] = high_vol_data['demand']
+
+    # Remove zones that are revisited in the future
+    for i in range(len(data['High'])):
+        if not np.isnan(data['demand'].iloc[i]):
+            if data['Low'].iloc[i + 1:].min() <= data['demand'].iloc[i]:
+                data['demand'].iloc[i] = np.nan
+        if not np.isnan(data['supply'].iloc[i]):
+            if data['High'].iloc[i + 1:].max() >= data['supply'].iloc[i]:
+                data['supply'].iloc[i] = np.nan
+
+    return data
 
 
 def ma_crossover_strategy(data, short_window, long_window):
@@ -45,6 +80,14 @@ def calculate_metrics(portfolio):
 
 def automate_backtesting(ticker, start_date, end_date, short_window=33, long_window=144):
     data = yf.download(ticker, start=start_date, end=end_date, interval='1d')
+
+    # If volume_threshold is not provided, set it as the 70% of average volume
+    volume_threshold = data['Volume'].mean() * 0.7
+
+    # Calculate support and resistance
+    window = 20  # Define the window for local maxima and minima detection
+    data = calculate_supply_demand_zones(data, window, volume_threshold)
+
     signals = ma_crossover_strategy(data['Close'], short_window, long_window)
     results = backtest(data, signals)
     total_return, annual_return, sharpe_ratio = calculate_metrics(results)
@@ -64,29 +107,41 @@ def automate_backtesting(ticker, start_date, end_date, short_window=33, long_win
 
 def plot_signals(data, signals, short_window, long_window):
     # Plot the closing price
-    plt.figure(figsize=(16, 9))
-    plt.plot(data.index, data['Close'], label='Close Price', color='blue')
+    _, ax = plt.subplots(figsize=(16, 9))
+    ax.plot(data.index, data['Close'], label='Close Price', color='blue')
 
     # Plot the short and long moving averages
-    plt.plot(data.index, calculate_smma(data['Close'], short_window), label=f'Short SMA ({short_window} days)',
-             color='green')
-    plt.plot(data.index, calculate_smma(data['Close'], long_window), label=f'Long SMA ({long_window} days)',
-             color='red')
+    ax.plot(data.index, calculate_smma(data['Close'], short_window), label=f'Short SMMA ({short_window} days)',
+            color='green')
+    ax.plot(data.index, calculate_smma(data['Close'], long_window), label=f'Long SMMA ({long_window} days)',
+            color='red')
+
+    # Add the demand zones as red boxes
+    for i in range(len(data['demand'])):
+        if not np.isnan(data['demand'].iloc[i]):
+            ax.add_patch(patches.Rectangle((data.index[i], data['Low'].iloc[i]), width=timedelta(days=window),
+                                           height=data['High'].iloc[i] - data['Low'].iloc[i], color='r', alpha=0.2))
+
+    # Add the supply zones as green boxes
+    for i in range(len(data['supply'])):
+        if not np.isnan(data['supply'].iloc[i]):
+            ax.add_patch(patches.Rectangle((data.index[i], data['Low'].iloc[i]), width=timedelta(days=window),
+                                           height=data['High'].iloc[i] - data['Low'].iloc[i], color='g', alpha=0.2))
 
     # Plot buy signals
     buys = signals.loc[signals.positions == 1.0]
-    plt.plot(buys.index, data.loc[buys.index]['Close'], '^', markersize=10, color='m', label='Buy')
+    ax.plot(buys.index, data.loc[buys.index]['Close'], '^', markersize=10, color='m', label='Buy')
 
     # Plot sell signals
     sells = signals.loc[signals.positions == -1.0]
-    plt.plot(sells.index, data.loc[sells.index]['Close'], 'v', markersize=10, color='k', label='Sell')
+    ax.plot(sells.index, data.loc[sells.index]['Close'], 'v', markersize=10, color='k', label='Sell')
 
     # Show the plot with a legend
-    plt.title('Moving Average Crossover Strategy')
-    plt.xlabel('Date')
-    plt.ylabel('Price')
-    plt.legend(loc='best')
-    plt.grid(True)
+    ax.set_title('Moving Average Crossover Strategy with Supply and Demand Zones')
+    ax.set_xlabel('Date')
+    ax.set_ylabel('Price')
+    ax.legend(loc='best')
+    ax.grid(True)
     plt.show()
 
 
