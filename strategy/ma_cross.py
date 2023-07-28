@@ -2,38 +2,15 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 import matplotlib.pyplot as plt
-from findatapy.market import Market, MarketDataRequest, MarketDataGenerator
 
 
-#FIXME not working with this data source
-def fetch_data():
-    market = Market(market_data_generator=MarketDataGenerator())
-
-    md_request = MarketDataRequest(start_date="11 Nov 2017",
-                                   finish_date="02 Feb 2018",
-                                   cut="LOC",
-                                   freq="tick",
-                                   data_source="bitcoincharts",
-                                   category="crypto",
-                                   fields=["close"],
-                                   tickers=["XBTUSD_itbit"])
-
-    # Fetch the data
-    data = market.fetch_market(md_request)
-
-    # The fetched data is in a multi-index DataFrame. We can flatten it for easier use:
-    data.columns = ['_'.join(col).strip() if isinstance(col, tuple) else col for col in data.columns.values]
-    data.rename(columns={'XBTUSD_itbit.close': 'Close'}, inplace=True)
-    return data
-
-
-def calculate_sma(data, window):
-    return data.rolling(window=window).mean()
+def calculate_smma(data, window):
+    return data.ewm(alpha=1/window, adjust=False).mean()
 
 
 def ma_crossover_strategy(data, short_window, long_window):
-    short_moving_avg = calculate_sma(data, short_window)
-    long_moving_avg = calculate_sma(data, long_window)
+    short_moving_avg = calculate_smma(data, short_window)
+    long_moving_avg = calculate_smma(data, long_window)
 
     signals = pd.DataFrame(index=data.index)
     signals['signal'] = 0.0
@@ -67,8 +44,7 @@ def calculate_metrics(portfolio):
 
 
 def automate_backtesting(ticker, start_date, end_date, short_window=33, long_window=144):
-    data = yf.download(ticker, start=start_date, end=end_date)
-    # data = fetch_data()
+    data = yf.download(ticker, start=start_date, end=end_date, interval='1d')
     signals = ma_crossover_strategy(data['Close'], short_window, long_window)
     results = backtest(data, signals)
     total_return, annual_return, sharpe_ratio = calculate_metrics(results)
@@ -92,10 +68,10 @@ def plot_signals(data, signals, short_window, long_window):
     plt.plot(data.index, data['Close'], label='Close Price', color='blue')
 
     # Plot the short and long moving averages
-    plt.plot(data.index, calculate_sma(data['Close'], short_window), label=f'Short SMA ({short_window} days)',
-             color='red')
-    plt.plot(data.index, calculate_sma(data['Close'], long_window), label=f'Long SMA ({long_window} days)',
+    plt.plot(data.index, calculate_smma(data['Close'], short_window), label=f'Short SMA ({short_window} days)',
              color='green')
+    plt.plot(data.index, calculate_smma(data['Close'], long_window), label=f'Long SMA ({long_window} days)',
+             color='red')
 
     # Plot buy signals
     buys = signals.loc[signals.positions == 1.0]
@@ -114,4 +90,4 @@ def plot_signals(data, signals, short_window, long_window):
     plt.show()
 
 
-results = automate_backtesting('AAPL', '2020-01-01', '2023-12-31')
+results = automate_backtesting('PLTR', '2020-05-04', '2023-07-28')
