@@ -3,3 +3,4 @@ findatapy
 matplotlib
 numpy
 pandas
+ta

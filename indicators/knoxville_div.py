@@ -32,60 +32,52 @@ change of price movements and is often used to identify overbought or oversold c
 for a security gets above 70, it could indicate that the asset is overbought, and when it gets below 30,
 it could indicate the asset is oversold. """
 
-import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
+import ta
+import yfinance as yf
 
-# Set the random seed for reproducibility
-np.random.seed(42)
 
-# Generate synthetic financial data
-date = pd.date_range(start='1/1/2020', periods=500)
-price = np.cumsum(np.random.randn(500)) + 100
+def get_knoxville_divergence(data, period=21):
+    # Calculate Momentum and RSI
+    data['momentum'] = ta.momentum.AwesomeOscillatorIndicator(high=data['High'], low=data['Low'], window1=5, window2=period).awesome_oscillator()
+    data['rsi'] = ta.momentum.RSIIndicator(close=data['Close'], window=period).rsi()
 
-# Create a DataFrame
-df = pd.DataFrame(price, columns=['close'], index=date)
+    # Initialize Knoxville Divergence series with 0
+    data['knoxville_divergence'] = 0
 
-# Calculate high, low, open prices
-df['high'] = df['close'] + np.random.rand(500) * 2
-df['low'] = df['close'] - np.random.rand(500) * 2
-df['open'] = df['low'] + (df['high'] - df['low']) * np.random.rand(500)
+    # Identify Bullish/Bearish Divergence
+    for i in range(period, len(data)):
+        # Bullish Divergence
+        if data['Close'].iloc[i] > data['Close'].iloc[i-period] and data['momentum'].iloc[i] < data['momentum'].iloc[i-period] and data['rsi'].iloc[i] < 30:
+            data['knoxville_divergence'].iloc[i] = -1
+        # Bearish Divergence
+        elif data['Close'].iloc[i] < data['Close'].iloc[i-period] and data['momentum'].iloc[i] > data['momentum'].iloc[i-period] and data['rsi'].iloc[i] > 70:
+            data['knoxville_divergence'].iloc[i] = 1
 
-# Calculate Momentum
-df['momentum'] = df['close'] - df['close'].shift(18)
+    return data
 
-# Calculate RSI
-delta = df['close'].diff()
-gain = delta.where(delta > 0, 0)
-loss = -delta.where(delta < 0, 0)
 
-average_gain = gain.rolling(18).mean()
-average_loss = loss.rolling(18).mean()
+# Fetch data from Yahoo Finance
+data = yf.download('PLTR', start='2022-01-01', end='2023-01-01', interval='1d')
 
-rs = average_gain / average_loss
-df['rsi'] = 100 - (100 / (1 + rs))
+# Calculate Knoxville Divergence
+data = get_knoxville_divergence(data)
 
-df.tail()
+# Plot the Close price and the Knoxville Divergence
+fig, ax1 = plt.subplots()
 
-# Identify Knoxville Divergence points
-df['price_increasing'] = df['close'].diff() > 0
-df['momentum_decreasing'] = df['momentum'].diff() < 0
-df['overbought'] = df['rsi'] > 70
-df['oversold'] = df['rsi'] < 30
+color = 'tab:blue'
+ax1.set_xlabel('Date')
+ax1.set_ylabel('Close', color=color)
+ax1.plot(data.index, data['Close'], color=color)
+ax1.tick_params(axis='y', labelcolor=color)
 
-df['kd_bearish'] = df['price_increasing'] & df['momentum_decreasing'] & df['overbought']
-df['kd_bullish'] = ~df['price_increasing'] & ~df['momentum_decreasing'] & df['oversold']
+ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+color = 'tab:red'
+ax2.set_ylabel('Knoxville Divergence', color=color)
+ax2.plot(data.index, data['knoxville_divergence'], color=color)
+ax2.tick_params(axis='y', labelcolor=color)
 
-# Plot price data and overlay Knoxville Divergence points
-plt.figure(figsize=(14, 7))
-plt.plot(df['close'], label='Price', color='blue')
-
-plt.plot(df[df['kd_bearish']]['close'], marker='v', markersize=7, linestyle='None', color='r', label='Bearish KD')
-plt.plot(df[df['kd_bullish']]['close'], marker='^', markersize=7, linestyle='None', color='g', label='Bullish KD')
-
-plt.title('Price with Knoxville Divergence')
-plt.xlabel('Date')
-plt.ylabel('Price')
-plt.legend()
-plt.grid()
+plt.title('PLTR Close Price and Knoxville Divergence')
+fig.tight_layout()  # otherwise the right y-label is slightly clipped
 plt.show()
