@@ -1,0 +1,84 @@
+//@version=5
+strategy("PhiloStone", overlay=true, margin_long=20, margin_short=20)
+
+// Input parameters
+maType = input.string(title="Select Kalman MA Type", options=["SMA", "EMA", "TMA"], defval="TMA")
+maLength = input.int(title="MA Length", defval=66)
+lengthKalman = input.int(12, "Length Kalman", minval=1)
+stopLossPct = input.float(1, title="Stop Loss (%)", minval=0.01) / 100
+
+// SMMA function
+smma(src, length) =>
+    var float result = na
+    if na(result)
+        result := ta.sma(src, length)
+    else
+        result := (result * (length - 1) + src) / length
+    result
+
+// SMMA calculations
+smma33Low = smma(low, 33)
+smma33High = smma(high, 33)
+smma144Low = smma(low, 144)
+smma144High = smma(high, 144)
+
+// Kalman MA calculation
+calculateMA(type, source, length) =>
+    if type == "SMA"
+        ta.sma(source, length)
+    else if type == "EMA"
+        ta.ema(source, length)
+    else
+        ta.sma(ta.sma(source, length), length) // TMA calculation
+
+KalmanMA = calculateMA(maType, close, maLength)
+var float klmf = na
+
+calcKalmanFilter(source, length) =>
+    float value1 = na
+    float value2 = na
+    value1 := 0.2 * (source - source[1]) + 0.8 * nz(value1[1])
+    value2 := 0.1 * (high - low) + 0.8 * nz(value2[1])
+    float lambda = math.abs(value1 / value2)
+    float alpha = (-math.pow(lambda, 2) + math.sqrt(math.pow(lambda, 4) + 16 * math.pow(lambda, 2))) / 8
+    // Use the previous value of klmf for the calculation
+    alpha * source + (1 - alpha) * nz(klmf)
+
+// Update klmf using the function's output in the main script body
+klmf := calcKalmanFilter(close, lengthKalman)
+
+// Momentum Indicator
+momentumLength = input.int(20, "Momentum Length", minval=1)
+momentum = ta.mom(close, momentumLength)
+
+// RSI Indicator
+rsiPeriod = input.int(20, "RSI Period", minval=1)
+RSI = ta.rsi(close, rsiPeriod)
+
+//----------- Trading signals
+buySignal = ta.crossover(klmf, KalmanMA)
+sellSignal = ta.crossunder(klmf, KalmanMA)
+
+// Strategy execution
+if buySignal
+    strategy.entry("Long", strategy.long)
+
+if sellSignal
+    strategy.entry("Short", strategy.short)
+
+// Plotting
+plot(KalmanMA, "Kalman MA", color.rgb(79, 75, 136))
+plot(klmf, "KLMF", color.rgb(124, 95, 129))
+plot(smma33Low, "SMMA 33 Low", color.rgb(0, 140, 255))
+plot(smma33High, "SMMA 33 High", color.rgb(0, 140, 255))
+plot(smma144Low, "SMMA 144 Low", color.rgb(255, 81, 0))
+plot(smma144High, "SMMA 144 High", color.rgb(255, 81, 0))
+
+// Plotting KalmanMA and klmf
+plotKalmanMA = plot(KalmanMA, "Kalman MA", color=color.rgb(79, 75, 136))
+plotKlmf = plot(klmf, "KLMF", color=color.rgb(124, 95, 129))
+
+// Use plot identifiers in the fill function
+fillColor = klmf > KalmanMA ? color.rgb(235, 228, 158, 30) : color.rgb(240, 172, 172, 30)
+fill(plot1=plotKalmanMA, plot2=plotKlmf, color=fillColor)
+
