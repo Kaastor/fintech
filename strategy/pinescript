@@ -6,6 +6,7 @@ maType = input.string(title="Select Kalman MA Type", options=["SMA", "EMA", "TMA
 maLength = input.int(title="MA Length", defval=66)
 lengthKalman = input.int(12, "Length Kalman", minval=1)
 stopLossPct = input.float(1, title="Stop Loss (%)", minval=0.01) / 100
+lookbackPeriod = input.int(30, title="Divergence Lookback Period", minval=1)
 
 // SMMA function
 smma(src, length) =>
@@ -47,24 +48,16 @@ calcKalmanFilter(source, length) =>
 // Update klmf using the function's output in the main script body
 klmf := calcKalmanFilter(close, lengthKalman)
 
-// Momentum Indicator
-momentumLength = input.int(20, "Momentum Length", minval=1)
-momentum = ta.mom(close, momentumLength)
-
-// RSI Indicator
-rsiPeriod = input.int(20, "RSI Period", minval=1)
-RSI = ta.rsi(close, rsiPeriod)
-
 //----------- Trading signals
 buySignal = ta.crossover(klmf, KalmanMA)
 sellSignal = ta.crossunder(klmf, KalmanMA)
 
 // Strategy execution
-if buySignal
-    strategy.entry("Long", strategy.long)
+// if buySignal
+//     strategy.entry("Long", strategy.long)
 
-if sellSignal
-    strategy.entry("Short", strategy.short)
+// if sellSignal
+//     strategy.entry("Short", strategy.short)
 
 // Plotting
 plot(KalmanMA, "Kalman MA", color.rgb(79, 75, 136))
@@ -82,3 +75,54 @@ plotKlmf = plot(klmf, "KLMF", color=color.rgb(124, 95, 129))
 fillColor = klmf > KalmanMA ? color.rgb(235, 228, 158, 30) : color.rgb(240, 172, 172, 30)
 fill(plot1=plotKalmanMA, plot2=plotKlmf, color=fillColor)
 
+// Accumulation/Distribution
+// Calculate A/D
+ad = ta.cum(close==high and close==low or high==low ? 0 : ((2 * close - low - high) / (high - low)) * volume)
+
+// Lookback period
+lookback = 100
+
+// Function to find higher highs
+higherHighs(series) =>
+    ta.highest(series, lookback)[1] < series and series > series[1]
+
+// Function to find lower highs in A/D
+lowerHighAD(series) =>
+    ta.highest(series, lookback)[1] > series and series < series[1]
+
+// Function to find lower lows
+lowerLows(series) =>
+    ta.lowest(series, lookback)[1] > series and series < series[1]
+
+// Function to find higher lows in A/D
+higherLowAD(series) =>
+    ta.lowest(series, lookback)[1] < series and series > series[1]
+
+// Find divergences
+priceHH = higherHighs(high)
+adLH = lowerHighAD(ad)
+priceLL = lowerLows(low)
+adHL = higherLowAD(ad)
+
+// Plotting lines for bullish divergences
+var line bullishDivergenceLine = na
+if priceHH and adLH
+    if na(bullishDivergenceLine)
+        bullishDivergenceLine := line.new(x1=bar_index[1], y1=high[1], x2=bar_index, y2=high, width=2, color=color.purple)
+    else
+        line.set_xy1(bullishDivergenceLine, x=bar_index[1], y=high[1])
+        line.set_xy2(bullishDivergenceLine, x=bar_index, y=high)
+else
+    bullishDivergenceLine := na
+
+// Plotting lines for bearish divergences
+var line bearishDivergenceLine = na
+if priceLL and adHL
+    if na(bearishDivergenceLine)
+        bearishDivergenceLine := line.new(x1=bar_index[1], y1=low[1], x2=bar_index, y2=low, width=2, color=color.purple)
+    else
+        line.set_xy1(bearishDivergenceLine, x=bar_index[1], y=low[1])
+        line.set_xy2(bearishDivergenceLine, x=bar_index, y=low)
+else
+    bearishDivergenceLine := na
+////MOMENTUM INDICATOR DIVERGENCE
