@@ -79,115 +79,38 @@ fill(plot1=plotKalmanMA, plot2=plotKlmf, color=fillColor)
 // Calculate A/D
 ad = ta.cum(close==high and close==low or high==low ? 0 : ((2 * close - low - high) / (high - low)) * volume)
 
-// Lookback period
-lookback = 100
+// Function to find local maxima and minima
+isMaxima(price) =>
+    ta.highestbars(price, lookbackPeriod) == 0
 
-// Function to find higher highs
-higherHighs(series) =>
-    ta.highest(series, lookback)[1] < series and series > series[1]
+isMinima(price) =>
+    ta.lowestbars(price, lookbackPeriod) == 0
 
-// Function to find lower highs in A/D
-lowerHighAD(series) =>
-    ta.highest(series, lookback)[1] > series and series < series[1]
+// Tracking previous maxima and minima points
+var float prevPriceMaxima = na
+var float prevADMaxima = na
+var float prevPriceMinima = na
+var float prevADMinima = na
+var int prevMaximaBarIndex = na
+var int prevMinimaBarIndex = na
 
-// Function to find lower lows
-lowerLows(series) =>
-    ta.lowest(series, lookback)[1] > series and series < series[1]
+// Detecting and plotting divergences
+if isMaxima(high)
+    if not na(prevPriceMaxima)
+        // Check for bearish divergence: Price maxima increasing, RSI maxima decreasing
+        div_len = bar_index-prevMaximaBarIndex
+        if high > prevPriceMaxima and ad < prevADMaxima and div_len > 5
+            line.new(x1=prevMaximaBarIndex, y1=prevPriceMaxima, x2=bar_index, y2=high, color=color.red, width=2)
+    prevPriceMaxima := high
+    prevADMaxima := ad
+    prevMaximaBarIndex := bar_index
 
-// Function to find higher lows in A/D
-higherLowAD(series) =>
-    ta.lowest(series, lookback)[1] < series and series > series[1]
-
-// Find divergences
-priceHH = higherHighs(high)
-adLH = lowerHighAD(ad)
-priceLL = lowerLows(low)
-adHL = higherLowAD(ad)
-
-// Plotting lines for bullish divergences
-var line bullishDivergenceLine = na
-if priceHH and adLH
-    if na(bullishDivergenceLine)
-        bullishDivergenceLine := line.new(x1=bar_index[1], y1=high[1], x2=bar_index, y2=high, width=2, color=color.purple)
-    else
-        line.set_xy1(bullishDivergenceLine, x=bar_index[1], y=high[1])
-        line.set_xy2(bullishDivergenceLine, x=bar_index, y=high)
-else
-    bullishDivergenceLine := na
-
-// Plotting lines for bearish divergences
-var line bearishDivergenceLine = na
-if priceLL and adHL
-    if na(bearishDivergenceLine)
-        bearishDivergenceLine := line.new(x1=bar_index[1], y1=low[1], x2=bar_index, y2=low, width=2, color=color.purple)
-    else
-        line.set_xy1(bearishDivergenceLine, x=bar_index[1], y=low[1])
-        line.set_xy2(bearishDivergenceLine, x=bar_index, y=low)
-else
-    bearishDivergenceLine := na
-
-////RSI INDICATOR DIVERGENCE
-// Get user input
-int i_MaxDistance       = input.int(title="Max Bar Distance", defval=50)
-int i_RSI_Length        = input.int(title="RSI Length", defval=14, minval=1)
-float i_RSI_Overbought  = input.float(title="RSI Overbought", defval=71.0)
-float i_RSI_Oversold    = input.float(title="RSI Oversold", defval=29.0)
-
-// Get RSI value
-rsiValue = ta.rsi(close, i_RSI_Length)
-
-// --------- BULLISH DIVERGENCE --------- //
-var float checkFirstLow     = na
-var float initialLowPrice   = na
-var float initialLowRSI     = na
-var int initialLowIndex     = na
-float swingLowRSI           = ta.lowest(rsiValue, 5)
-
-// Detecting and storing the lowest low during oversold conditions
-if rsiValue < i_RSI_Oversold
-    if na(checkFirstLow) or low < checkFirstLow
-        checkFirstLow := low
-        initialLowIndex := bar_index
-        initialLowRSI := rsiValue
-else
-    if not na(checkFirstLow)
-        initialLowPrice := checkFirstLow
-        checkFirstLow := na
-
-// Function to check for divergence and draw lines
-checkDivergence(lowPrice, lowIndex, lowRSI) =>
-    if initialLowIndex != bar_index[1]
-        if lowPrice[1] < initialLowPrice and lowPrice > lowPrice[1] and lowRSI > initialLowRSI and bar_index - initialLowIndex <= i_MaxDistance
-            line.new(x1=initialLowIndex, y1=initialLowPrice, x2=bar_index[1], y2=lowPrice[1], color=color.lime, width=2)
-
-// Check for divergence on every bar
-if not na(initialLowPrice)
-    checkDivergence(low, bar_index, rsiValue)
-
-
-// --------- BEARISH DIVERGENCE --------- //
-var float checkFirstHigh    = na
-var float initialHighPrice  = na
-var float initialHighRSI    = na
-var int initialHighIndex    = na
-float swingHighRSI          = ta.highest(rsiValue, 5)
-
-if rsiValue > i_RSI_Overbought
-    if na(checkFirstHigh) or high > checkFirstHigh
-        checkFirstHigh := high
-        initialHighIndex := bar_index
-        initialHighRSI := rsiValue
-else
-    if not na(checkFirstHigh)
-        initialHighPrice := checkFirstHigh
-        checkFirstHigh := na
-
-// Function to check for divergence and draw lines
-checkDivergenceBear(highPrice, highIndex, highRSI) =>
-    if initialHighIndex != bar_index[1]
-        if highPrice[1] > initialHighPrice and highPrice < highPrice[1] and highRSI < initialHighRSI and bar_index - initialHighIndex <= i_MaxDistance
-            line.new(x1=initialHighIndex, y1=initialHighPrice, x2=bar_index[1], y2=highPrice[1], color=color.lime, width=2)
-
-// Check for divergence on every bar
-if not na(initialHighPrice)
-    checkDivergenceBear(high, bar_index, rsiValue)
+if isMinima(low)
+    if not na(prevPriceMinima)
+        // Check for bullish divergence: Price minima decreasing, RSI minima increasing
+        div_len = bar_index-prevMinimaBarIndex
+        if low <= prevPriceMinima and ad >= prevADMinima and div_len > 5
+            line.new(x1=prevMinimaBarIndex, y1=prevPriceMinima, x2=bar_index, y2=low, color=color.green, width=2)
+    prevPriceMinima := low
+    prevADMinima := ad
+    prevMinimaBarIndex := bar_index
