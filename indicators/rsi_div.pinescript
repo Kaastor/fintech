@@ -1,0 +1,39 @@
+rsiPeriod = input(14, "RSI Period")
+rsiSource = input(close, "RSI Source")
+
+// Calculate RSI
+rsi = ta.rsi(rsiSource, rsiPeriod)
+
+// Function to find local maxima and minima
+isMaxima(price) =>
+    ta.highestbars(price, lookbackPeriod) == 0
+
+isMinima(price) =>
+    ta.lowestbars(price, lookbackPeriod) == 0
+
+// Tracking previous maxima and minima points
+var float prevPriceMaxima = na
+var float prevRsiMaxima = na
+var float prevPriceMinima = na
+var float prevRsiMinima = na
+var int prevMaximaBarIndex = na
+var int prevMinimaBarIndex = na
+
+// Detecting and plotting divergences
+if isMaxima(high)
+    if not na(prevPriceMaxima)
+        // Check for bearish divergence: Price maxima increasing, RSI maxima decreasing
+        if high > prevPriceMaxima and rsi < prevRsiMaxima
+            line.new(x1=prevMaximaBarIndex, y1=prevPriceMaxima, x2=bar_index, y2=high, color=color.red, width=2)
+    prevPriceMaxima := high
+    prevRsiMaxima := rsi
+    prevMaximaBarIndex := bar_index
+
+if isMinima(low)
+    if not na(prevPriceMinima)
+        // Check for bullish divergence: Price minima decreasing, RSI minima increasing
+        if low < prevPriceMinima and rsi > prevRsiMinima
+            line.new(x1=prevMinimaBarIndex, y1=prevPriceMinima, x2=bar_index, y2=low, color=color.green, width=2)
+    prevPriceMinima := low
+    prevRsiMinima := rsi
+    prevMinimaBarIndex := bar_index
