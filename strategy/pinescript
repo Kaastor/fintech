@@ -90,13 +90,13 @@ var int ad_kalman_ma_len = na
 ad_kalman_length := 12
 ad_kalman_ma_len := 60
 klmf_ad := calcKalmanFilter(adjustedAD, ad_kalman_length)
-klmf_ad_ma := calculateMA(maType, klmf_ad, ad_kalman_ma_len)
+klmf_ad_ma := calculateMA(maType, adjustedAD, ad_kalman_ma_len)
 
-// Plotting KalmanMA and klmf
-// plotKalmanMA_ad = plot(klmf_ad_ma, "Kalman AD MA", color=color.rgb(79, 75, 136))
-// plotKlmf_ad = plot(klmf_ad, "KLMF AD", color=color.rgb(124, 95, 129))
-// fillColor_ad = klmf_ad > klmf_ad_ma ? color.rgb(235, 228, 158, 30) : color.rgb(240, 172, 172, 30)
-// fill(plot1=plotKalmanMA_ad, plot2=plotKlmf_ad, color=fillColor_ad)
+// Plotting AD and AD TMA (no kalman)
+plotKalmanMA_ad = plot(klmf_ad_ma, "Kalman AD MA", color=color.rgb(79, 75, 136))
+plotKlmf_ad = plot(ad, "KLMF AD", color=color.rgb(124, 95, 129))
+fillColor_ad = ad > klmf_ad_ma ? color.rgb(235, 228, 158, 30) : color.rgb(240, 172, 172, 30)
+fill(plot1=plotKalmanMA_ad, plot2=plotKlmf_ad, color=fillColor_ad)
 
 // Function to find local maxima and minima
 isMaxima(price) =>
