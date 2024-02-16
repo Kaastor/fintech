@@ -32,7 +32,7 @@ calculateMA(type, source, length) =>
     else
         ta.sma(ta.sma(source, length), length) // TMA calculation
 
-KalmanMA = calculateMA(maType, close, maLength)
+
 var float klmf = na
 
 calcKalmanFilter(source, length) =>
@@ -47,6 +47,7 @@ calcKalmanFilter(source, length) =>
 
 // Update klmf using the function's output in the main script body
 klmf := calcKalmanFilter(close, lengthKalman)
+KalmanMA = calculateMA(maType, close, maLength)
 
 //----------- Trading signals
 buySignal = ta.crossover(klmf, KalmanMA)
@@ -78,6 +79,24 @@ fill(plot1=plotKalmanMA, plot2=plotKlmf, color=fillColor)
 // Accumulation/Distribution
 // Calculate A/D
 ad = ta.cum(close==high and close==low or high==low ? 0 : ((2 * close - low - high) / (high - low)) * volume)
+// Adjust AD values by the recent AD value minus the recent close price
+adjustedAD = ad// - (ad[0] - (close-close*0.05))
+// Plot the adjusted AD values
+//plot(adjustedAD, color=color.black, title="Adjusted AD")
+var float klmf_ad = na
+var float klmf_ad_ma = na
+var int ad_kalman_length = na
+var int ad_kalman_ma_len = na
+ad_kalman_length := 12
+ad_kalman_ma_len := 60
+klmf_ad := calcKalmanFilter(adjustedAD, ad_kalman_length)
+klmf_ad_ma := calculateMA(maType, klmf_ad, ad_kalman_ma_len)
+
+// Plotting KalmanMA and klmf
+// plotKalmanMA_ad = plot(klmf_ad_ma, "Kalman AD MA", color=color.rgb(79, 75, 136))
+// plotKlmf_ad = plot(klmf_ad, "KLMF AD", color=color.rgb(124, 95, 129))
+// fillColor_ad = klmf_ad > klmf_ad_ma ? color.rgb(235, 228, 158, 30) : color.rgb(240, 172, 172, 30)
+// fill(plot1=plotKalmanMA_ad, plot2=plotKlmf_ad, color=fillColor_ad)
 
 // Function to find local maxima and minima
 isMaxima(price) =>
@@ -99,8 +118,8 @@ if isMaxima(high)
     if not na(prevPriceMaxima)
         // Check for bearish divergence: Price maxima increasing, RSI maxima decreasing
         div_len = bar_index-prevMaximaBarIndex
-        if high > prevPriceMaxima and ad < prevADMaxima and div_len > 5
-            line.new(x1=prevMaximaBarIndex, y1=prevPriceMaxima, x2=bar_index, y2=high, color=color.red, width=2)
+        //if high > prevPriceMaxima and ad < prevADMaxima and div_len > 5
+            //line.new(x1=prevMaximaBarIndex, y1=prevPriceMaxima, x2=bar_index, y2=high, color=color.purple, width=3)
     prevPriceMaxima := high
     prevADMaxima := ad
     prevMaximaBarIndex := bar_index
@@ -110,7 +129,44 @@ if isMinima(low)
         // Check for bullish divergence: Price minima decreasing, RSI minima increasing
         div_len = bar_index-prevMinimaBarIndex
         if low <= prevPriceMinima and ad >= prevADMinima and div_len > 5
-            line.new(x1=prevMinimaBarIndex, y1=prevPriceMinima, x2=bar_index, y2=low, color=color.green, width=2)
+            line.new(x1=prevMinimaBarIndex, y1=prevPriceMinima, x2=bar_index, y2=low, color=color.purple, width=3)
     prevPriceMinima := low
     prevADMinima := ad
     prevMinimaBarIndex := bar_index
+
+//Momentum
+// Accumulation/Distribution
+// Calculate A/D
+// len = input.int(21, minval=1, title="Length")
+// src = input(close, title="Source")
+mom = ta.mom(hlc3, 21)
+
+// Tracking previous maxima and minima points
+var float prevPriceMaximaMom = na
+var float prevMomMaxima = na
+var float prevPriceMinimaMom = na
+var float prevMomMinima = na
+var int prevMaximaBarIndexMom = na
+var int prevMinimaBarIndexMom = na
+
+
+// // Detecting and plotting divergences
+if isMaxima(high)
+    if not na(prevPriceMaximaMom)
+        // Check for bearish divergence: Price maxima increasing, RSI maxima decreasing
+        div_len = bar_index-prevMaximaBarIndexMom
+        //if high > prevPriceMaximaMom and mom < prevMomMaxima and ta.highest(ta.rsi(hlc3, 21), 15) > 70
+            //line.new(x1=prevMaximaBarIndexMom, y1=prevPriceMaximaMom, x2=bar_index, y2=high, color=color.blue, width=2,style = line.style_arrow_right)
+    prevPriceMaximaMom := high
+    prevMomMaxima := mom
+    prevMaximaBarIndexMom := bar_index
+
+if isMinima(low)
+    if not na(prevPriceMinimaMom)
+        // Check for bullish divergence: Price minima decreasing, RSI minima increasing
+        div_len = bar_index-prevMinimaBarIndexMom
+        if low <= prevPriceMinimaMom and mom >= prevMomMinima and ta.lowest(ta.rsi(hlc3, 21), 15) < 30
+            line.new(x1=prevMinimaBarIndexMom, y1=prevPriceMinimaMom, x2=bar_index, y2=low, color=color.blue, width=2, style = line.style_arrow_right)
+    prevPriceMinimaMom := low
+    prevMomMinima := mom
+    prevMinimaBarIndexMom := bar_index
