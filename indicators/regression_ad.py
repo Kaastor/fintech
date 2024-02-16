@@ -12,7 +12,7 @@ def calculate_angle(m1, m2):
 
 
 # Load the CSV file
-file_path = './data/Binance_BTCUSDT_d.csv'
+file_path = './data/Binance_IOTAUSDT_d.csv'
 data = pd.read_csv(file_path, skiprows=1)
 data['Date'] = pd.to_datetime(data['Date'])
 data_reversed = data.iloc[::-1].reset_index(drop=True)

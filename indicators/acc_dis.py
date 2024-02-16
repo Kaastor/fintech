@@ -2,13 +2,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # Load and prepare the data
-file_path = './data/Binance_BTCUSDT_d.csv'
+file_path = './data/Binance_IOTAUSDT_d.csv'
 data = pd.read_csv(file_path, skiprows=1)
 data['Date'] = pd.to_datetime(data['Date'])
 data_reversed = data.iloc[::-1].reset_index(drop=True)
 data_reversed['AD_Pine_BTCVol_Corrected'] = data_reversed.apply(
     lambda row: 0 if (row['Close'] == row['High'] and row['Close'] == row['Low']) or row['High'] == row['Low']
-    else ((2 * row['Close'] - row['Low'] - row['High']) / (row['High'] - row['Low']) * row['Volume BTC']), axis=1).cumsum()
+    else ((2 * row['Close'] - row['Low'] - row['High']) / (row['High'] - row['Low']) * row['Volume USDT']), axis=1).cumsum()
 
 # Calculate Rate of Change (RoC) for Price and AD Indicator over a 50-day window
 window = 30

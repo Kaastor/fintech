@@ -29,7 +29,7 @@ def calculate_slope(x1, y1, x2, y2):
 
 
 # Load and preprocess the data
-data = pd.read_csv('./data/Binance_BTCUSDT_d.csv', skiprows=1, index_col='Date', parse_dates=['Date'])
+data = pd.read_csv('./data/Binance_IOTAUSDT_d.csv', skiprows=1, index_col='Date', parse_dates=['Date'])
 data.sort_index(inplace=True)
 data['money_flow_multiplier'] = data.apply(money_flow_multiplier, axis=1)
 data['money_flow_volume'] = data.apply(money_flow_volume, axis=1)
