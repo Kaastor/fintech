@@ -1,5 +1,5 @@
 //@version=5
-strategy("PhiloStone", overlay=true, margin_long=20, margin_short=20)
+indicator("PhiloStoneVol", overlay=false)
 
 // Input parameters
 maType = input.string(title="Select Kalman MA Type", options=["SMA", "EMA", "TMA"], defval="TMA")
@@ -61,20 +61,18 @@ sellSignal = ta.crossunder(klmf, KalmanMA)
 //     strategy.entry("Short", strategy.short)
 
 // Plotting
-plot(KalmanMA, "Kalman MA", color.rgb(79, 75, 136))
-plot(klmf, "KLMF", color.rgb(124, 95, 129))
-plot(smma33Low, "SMMA 33 Low", color.rgb(0, 140, 255))
-plot(smma33High, "SMMA 33 High", color.rgb(0, 140, 255))
-plot(smma144Low, "SMMA 144 Low", color.rgb(255, 81, 0))
-plot(smma144High, "SMMA 144 High", color.rgb(255, 81, 0))
+// plot(KalmanMA, "Kalman MA", color.rgb(79, 75, 136))
+// plot(klmf, "KLMF", color.rgb(124, 95, 129))
+// plot(smma33Low, "SMMA 33 Low", color.rgb(0, 140, 255))
+// plot(smma33High, "SMMA 33 High", color.rgb(0, 140, 255))
+// plot(smma144Low, "SMMA 144 Low", color.rgb(255, 81, 0))
+// plot(smma144High, "SMMA 144 High", color.rgb(255, 81, 0))
 
-// Plotting KalmanMA and klmf
-plotKalmanMA = plot(KalmanMA, "Kalman MA", color=color.rgb(79, 75, 136))
-plotKlmf = plot(klmf, "KLMF", color=color.rgb(124, 95, 129))
+// plotKalmanMA = plot(KalmanMA, "Kalman MA", color=color.rgb(79, 75, 136))
+// plotKlmf = plot(klmf, "KLMF", color=color.rgb(124, 95, 129))
 
-// Use plot identifiers in the fill function
-fillColor = klmf > KalmanMA ? color.rgb(235, 228, 158, 30) : color.rgb(240, 172, 172, 30)
-fill(plot1=plotKalmanMA, plot2=plotKlmf, color=fillColor)
+// fillColor = klmf > KalmanMA ? color.rgb(235, 228, 158, 30) : color.rgb(240, 172, 172, 30)
+// fill(plot1=plotKalmanMA, plot2=plotKlmf, color=fillColor)
 
 // Accumulation/Distribution
 // Calculate A/D
@@ -114,25 +112,36 @@ var int prevMaximaBarIndex = na
 var int prevMinimaBarIndex = na
 
 // Detecting and plotting divergences
+applyBgColorDivAdMax = false
 if isMaxima(high)
     if not na(prevPriceMaxima)
         // Check for bearish divergence: Price maxima increasing, RSI maxima decreasing
         div_len = bar_index-prevMaximaBarIndex
-        //if high > prevPriceMaxima and ad < prevADMaxima and div_len > 5
-            //line.new(x1=prevMaximaBarIndex, y1=prevPriceMaxima, x2=bar_index, y2=high, color=color.purple, width=3)
+        if high > prevPriceMaxima and ad < prevADMaxima and div_len > 5
+            applyBgColorDivAdMax := true
+        else
+            applyBgColorDivAdMax := false
     prevPriceMaxima := high
     prevADMaxima := ad
     prevMaximaBarIndex := bar_index
 
+bgcolor(applyBgColorDivAdMax ? color.new(color.purple, 40) : na, title="Bear Divergence Background")
+
+applyBgColorDivAdMin = false
 if isMinima(low)
     if not na(prevPriceMinima)
         // Check for bullish divergence: Price minima decreasing, RSI minima increasing
         div_len = bar_index-prevMinimaBarIndex
         if low <= prevPriceMinima and ad >= prevADMinima and div_len > 5
-            line.new(x1=prevMinimaBarIndex, y1=prevPriceMinima, x2=bar_index, y2=low, color=color.purple, width=3)
+            applyBgColorDivAdMin := true
+        else
+            applyBgColorDivAdMin := false
     prevPriceMinima := low
     prevADMinima := ad
     prevMinimaBarIndex := bar_index
+
+bgcolor(applyBgColorDivAdMin ? color.new(color.purple, 40) : na, title="Bull Divergence Background")
+
 
 //Momentum
 // Accumulation/Distribution
@@ -149,24 +158,33 @@ var float prevMomMinima = na
 var int prevMaximaBarIndexMom = na
 var int prevMinimaBarIndexMom = na
 
-
 // // Detecting and plotting divergences
+applyBgColorDivMomMin = false
 if isMaxima(high)
     if not na(prevPriceMaximaMom)
         // Check for bearish divergence: Price maxima increasing, RSI maxima decreasing
         div_len = bar_index-prevMaximaBarIndexMom
-        //if high > prevPriceMaximaMom and mom < prevMomMaxima and ta.highest(ta.rsi(hlc3, 21), 15) > 70
-            //line.new(x1=prevMaximaBarIndexMom, y1=prevPriceMaximaMom, x2=bar_index, y2=high, color=color.blue, width=2,style = line.style_arrow_right)
+        if high > prevPriceMaximaMom and mom < prevMomMaxima and ta.highest(ta.rsi(hlc3, 21), 15) > 70
+            applyBgColorDivMomMin := true
+        else
+            applyBgColorDivMomMin := false
     prevPriceMaximaMom := high
     prevMomMaxima := mom
     prevMaximaBarIndexMom := bar_index
 
+bgcolor(applyBgColorDivMomMin ? color.new(#ff9900, 40) : na, title="Bear Divergence Background")
+
+applyBgColorDivMomMax = false
 if isMinima(low)
     if not na(prevPriceMinimaMom)
         // Check for bullish divergence: Price minima decreasing, RSI minima increasing
         div_len = bar_index-prevMinimaBarIndexMom
         if low <= prevPriceMinimaMom and mom >= prevMomMinima and ta.lowest(ta.rsi(hlc3, 21), 15) < 30
-            line.new(x1=prevMinimaBarIndexMom, y1=prevPriceMinimaMom, x2=bar_index, y2=low, color=color.blue, width=2, style = line.style_arrow_right)
+            applyBgColorDivMomMax := true
+        else
+            applyBgColorDivMomMax := false
     prevPriceMinimaMom := low
     prevMomMinima := mom
     prevMinimaBarIndexMom := bar_index
+
+bgcolor(applyBgColorDivMomMax ? color.new(#ff9900, 40) : na, title="Bull Divergence Background")
