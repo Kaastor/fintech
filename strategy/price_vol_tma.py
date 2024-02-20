@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import cryptocompare
 
 
 def smoothed_moving_average(values, window):
@@ -24,10 +25,20 @@ def calculate_ad(high, low, close, volume):
     return np.cumsum(mfv)
 
 
-def load_and_prepare_data(file_path):
+def load_and_prepare_data(file_path, live):
     """Load and prepare data from CSV file."""
-    df = pd.read_csv(file_path, skiprows=0)
-    df['Date'] = pd.to_datetime(df['Date'])
+    if live is False:
+        df = pd.read_csv(file_path, skiprows=0)
+        df['Date'] = pd.to_datetime(df['Date'])
+    else:
+        df = pd.DataFrame(cryptocompare.get_historical_price_hour('arb', currency='USDT', exchange='Binance'))
+        df['Date'] = pd.to_datetime(df['time'], unit='s')
+        df['Close'] = df['close']
+        df['High'] = df['high']
+        df['Low'] = df['low']
+        df['Open'] = df['open']
+        df['Volume'] = df['volumefrom']
+
     return df
 
 
@@ -37,10 +48,10 @@ def add_indicators_to_df(df):
     df['AD'] = calculate_ad(high, low, close, volume)
     df['TMA_AD'] = triangular_moving_average(df['AD'].values, 60)
     df['TMA_PRICE'] = triangular_moving_average(df['Close'].values, 60)
-    df['SMA_PRICE'] = smoothed_moving_average(df['Close'], 14)
-    df['SMA_AD'] = smoothed_moving_average(df['AD'], 14)
-    df['SMA_33'] = smoothed_moving_average(df['Close'], 33)
-    df['SMA_144'] = smoothed_moving_average(df['Close'], 144)
+    df['SMA_PRICE'] = smoothed_moving_average(df['Close'], 22)
+    df['SMA_AD'] = smoothed_moving_average(df['AD'], 22)
+    df['SMA_33'] = smoothed_moving_average(df['High'], 33)
+    df['SMA_144'] = smoothed_moving_average(df['High'], 144)
 
 
 def plot_price_and_tma_with_sma_crossover(df, buy_signals, sell_signals):
@@ -96,7 +107,7 @@ def plot_price_and_tma_with_sma_crossover(df, buy_signals, sell_signals):
 
 # Main script
 file_path = '../indicators/data/Bitcoin Price (Oct2015-2022)_daily.csv'
-df = load_and_prepare_data(file_path)
+df = load_and_prepare_data(file_path, True)
 add_indicators_to_df(df)
 '''Strategy'''
 
@@ -128,6 +139,7 @@ def signal_one(ax):
         previous_tma_price = row['TMA_PRICE']
 
 
+# Using derivatives
 def signal_two(ax):
     # Initialize a variable to track the previous row's SMA_PRICE and TMA_PRICE
     previous_sma_price = None
@@ -145,7 +157,8 @@ def signal_two(ax):
         if previous_sma_price <= previous_tma_price and row['SMA_PRICE'] > row['TMA_PRICE']:
             # Also ensure SMA_AD > TMA_AD at the crossover point
             if row['SMA_AD'] > row['TMA_AD']:
-                ax.axvline(x=row['Date'], color='green', alpha=0.7)
+                if row['SMA_33'] > row['SMA_144']:
+                    ax.axvline(x=row['Date'], color='green', alpha=0.7)
 
         # Update the previous values for the next iteration
         previous_sma_price = row['SMA_PRICE']
