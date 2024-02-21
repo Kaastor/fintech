@@ -7,24 +7,8 @@ import matplotlib.dates as mdates
 import cryptocompare
 import requests
 
-
-def smoothed_moving_average(values, window):
-    """Calculate the Smoothed Moving Average."""
-    return pd.Series(values).rolling(window=window, min_periods=1).mean().values
-
-
-def triangular_moving_average(values, window):
-    """Calculate the Triangular Moving Average."""
-    simple_ma = pd.Series(values).rolling(window=window, min_periods=1).mean()
-    return simple_ma.rolling(window=window, min_periods=1).mean().values
-
-
-def calculate_ad(high, low, close, volume):
-    """Calculate Accumulation Distribution (AD) indicator."""
-    mfm = ((close - low) - (high - close)) / (high - low)
-    mfm = np.where((high - low) == 0, 0, mfm)
-    mfv = mfm * volume
-    return np.cumsum(mfv)
+from strategy.PS.util import exponential_moving_average, calculate_ad, triangular_moving_average, \
+    smoothed_moving_average
 
 
 def load_and_prepare_data(file_path, ticker, live):
@@ -50,12 +34,13 @@ def add_indicators_to_df(df):
     """Add AD and TMA indicators to the DataFrame."""
     high, low, close, volume = df['High'].values, df['Low'].values, df['Close'].values, df['Volume'].values
     df['AD'] = calculate_ad(high, low, close, volume)
-    df['TMA_AD'] = triangular_moving_average(df['AD'].values, 60)
-    df['TMA_PRICE'] = triangular_moving_average(df['Close'].values, 60)
+    df['TMA_AD'] = triangular_moving_average(df['AD'].values, 59)
+    df['TMA_PRICE'] = exponential_moving_average(df['Close'].values, 60)
     df['SMA_PRICE'] = smoothed_moving_average(df['Close'], 14)
-    df['SMA_AD'] = smoothed_moving_average(df['AD'], 22)
-    df['SMA_33'] = smoothed_moving_average(df['High'], 33)
-    df['SMA_144'] = smoothed_moving_average(df['High'], 144)
+    df['SMA_AD'] = smoothed_moving_average(df['AD'], 14)
+    df['SMA_33'] = smoothed_moving_average(df['Close'], 44)
+    df['SMA_144'] = smoothed_moving_average(df['Close'], 160)
+    df['SMA_200'] = smoothed_moving_average(df['Close'], 200)
 
 
 def plot_price_and_tma_with_sma_crossover(df, buy_signals, sell_signals, ticker):
@@ -89,7 +74,7 @@ def plot_price_and_tma_with_sma_crossover(df, buy_signals, sell_signals, ticker)
             ax.axvspan(sell_signal - pd.Timedelta(days=0.5), sell_signal + pd.Timedelta(days=0.5), color='red',
                        alpha=0.7)
     else:
-        signal_two(ax)
+        signal_one(ax)
 
     # Fill based on crossovers
     ax.fill_between(df['Date'], df['SMA_PRICE'], df['TMA_PRICE'], where=df['SMA_PRICE'] >= df['TMA_PRICE'],
@@ -112,7 +97,11 @@ def plot_price_and_tma_with_sma_crossover(df, buy_signals, sell_signals, ticker)
 
 dates = []
 
-'''Safest, most hits but rare'''
+'''Safest, most hits but rare
+Price gold,
+MAs up,
+AD gold
+'''
 
 
 def signal_one(ax):
@@ -132,9 +121,9 @@ def signal_one(ax):
         if previous_sma_price <= previous_tma_price and row['SMA_PRICE'] > row['TMA_PRICE']:
             # Also ensure SMA_AD > TMA_AD at the crossover point
             if row['SMA_AD'] > row['TMA_AD']:
-                # if row['SMA_33'] > row['SMA_144']:
-                ax.axvline(x=row['Date'], color='green', alpha=0.7)
-                dates.append(row['Date'])
+                if row['SMA_33'] > row['SMA_144']:
+                    ax.axvline(x=row['Date'], color='green', alpha=0.7)
+                    dates.append(row['Date'])
 
         # Update the previous values for the next iteration
         previous_sma_price = row['SMA_PRICE']
@@ -166,12 +155,14 @@ def simulate_trading_strategy_with_ad_signals(df):
     initial_balance = 1.0  # Starting with $1
     position_open = False
     for i in range(1, len(df)):
-        if df['SMA_PRICE'].iloc[i] > df['TMA_PRICE'].iloc[i] and not position_open:
+        if df['SMA_AD'].iloc[i] > df['TMA_AD'].iloc[i] \
+                and not position_open:
             # Buy
             position_open = True
             buy_price = df['Close'].iloc[i]
             buy_signals.append(df.loc[i, 'Date'])  # Record buy date
-        elif df['SMA_PRICE'].iloc[i] < df['TMA_PRICE'].iloc[i] and position_open:
+        elif df['SMA_AD'].iloc[i] < df['TMA_AD'].iloc[i] \
+                and position_open:
             # Sell
             sell_signals.append(df.loc[i, 'Date'])  # Record sell date
             position_open = False
@@ -204,7 +195,7 @@ def plot_ad_tma_sma_with_signals(df, buy_signals, sell_signals):
             ax.axvspan(sell_signal - pd.Timedelta(days=0.5), sell_signal + pd.Timedelta(days=0.5), color='red',
                        alpha=0.5)
     else:
-        signal_two(ax)
+        signal_one(ax)
 
     ax.fill_between(df['Date'], ax.get_ylim()[0], ax.get_ylim()[1], where=df['TMA_PRICE'] <= df['SMA_PRICE'],
                     color='yellow', alpha=0.2, label='TMA > Close (Yellow)')
@@ -231,8 +222,8 @@ add_indicators_to_df(df)
 final_balance, buy_signals, sell_signals = simulate_trading_strategy_with_ad_signals(df)
 print(f"Final USD Balance: ${final_balance:.2f}")
 # Plot the AD, TMA_AD, and buy/sell signals
-plot_price_and_tma_with_sma_crossover(df, buy_signals, sell_signals, 'btc')
-plot_ad_tma_sma_with_signals(df, buy_signals, sell_signals)
+plot_price_and_tma_with_sma_crossover(df, None, None, 'btc')
+plot_ad_tma_sma_with_signals(df, None, None)
 
 '''Scan'''
 
@@ -273,3 +264,6 @@ def test_tickers():
     # print(f'{ticker} done.')
 
 print(sorted(dates))
+
+# EMA 60 na samym gold/blue price 216
+# 'EMA, 66, 310.89' AD
