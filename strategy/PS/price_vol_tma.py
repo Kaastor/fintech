@@ -15,9 +15,8 @@ def smoothed_moving_average(values, window):
 
 def triangular_moving_average(values, window):
     """Calculate the Triangular Moving Average."""
-    weights = np.arange(1, window + 1)
-    tma = np.convolve(values, weights / weights.sum(), 'valid')
-    return np.concatenate((np.full(window - 1, np.nan), tma))
+    simple_ma = pd.Series(values).rolling(window=window, min_periods=1).mean()
+    return simple_ma.rolling(window=window, min_periods=1).mean().values
 
 
 def calculate_ad(high, low, close, volume):
@@ -53,7 +52,7 @@ def add_indicators_to_df(df):
     df['AD'] = calculate_ad(high, low, close, volume)
     df['TMA_AD'] = triangular_moving_average(df['AD'].values, 60)
     df['TMA_PRICE'] = triangular_moving_average(df['Close'].values, 60)
-    df['SMA_PRICE'] = smoothed_moving_average(df['Close'], 22)
+    df['SMA_PRICE'] = smoothed_moving_average(df['Close'], 14)
     df['SMA_AD'] = smoothed_moving_average(df['AD'], 22)
     df['SMA_33'] = smoothed_moving_average(df['High'], 33)
     df['SMA_144'] = smoothed_moving_average(df['High'], 144)
@@ -161,32 +160,28 @@ def signal_two(ax):
 def simulate_trading_strategy_with_ad_signals(df):
     df['Next_Open'] = df['Open'].shift(-1)  # Next day's opening price for trade execution
 
-    usd_balance = 1.0
-    asset_holding = 0.0
     buy_signals, sell_signals = [], []  # Lists to store buy and sell dates
 
-    for i in range(len(df) - 1):  # Exclude the last row as it has no Next_Open
-        ad = df.loc[i, 'AD']
-        tma_ad = df.loc[i, 'TMA_AD']
-        tma_price = df.loc[i, 'TMA_PRICE']
-        sma_ad = df.loc[i, 'SMA_AD']
-        sma_price = df.loc[i, 'SMA_PRICE']
-        next_open_price = df.loc[i, 'Next_Open']
-
-        if sma_ad > tma_ad and usd_balance > 0:  # Buy condition
-            asset_holding = usd_balance / next_open_price
-            usd_balance = 0
+    # Simulate the trading strategy
+    initial_balance = 1.0  # Starting with $1
+    position_open = False
+    for i in range(1, len(df)):
+        if df['SMA_PRICE'].iloc[i] > df['TMA_PRICE'].iloc[i] and not position_open:
+            # Buy
+            position_open = True
+            buy_price = df['Close'].iloc[i]
             buy_signals.append(df.loc[i, 'Date'])  # Record buy date
-
-        # Sell condition - sell when first blue appears, then wait for buy
-        elif sma_ad < tma_ad and asset_holding > 0:
-            usd_balance = asset_holding * next_open_price
-            asset_holding = 0
+        elif df['SMA_PRICE'].iloc[i] < df['TMA_PRICE'].iloc[i] and position_open:
+            # Sell
             sell_signals.append(df.loc[i, 'Date'])  # Record sell date
+            position_open = False
+            sell_price = df['Close'].iloc[i]
+            initial_balance *= sell_price / buy_price
+    if position_open:
+        final_price = df['Close'].iloc[-1]
+        initial_balance *= final_price / buy_price
 
-    final_usd_balance = usd_balance + asset_holding * df.iloc[-1]['Open']
-
-    return final_usd_balance, buy_signals, sell_signals
+    return initial_balance, buy_signals, sell_signals
 
 
 def plot_ad_tma_sma_with_signals(df, buy_signals, sell_signals):
@@ -229,15 +224,15 @@ def plot_ad_tma_sma_with_signals(df, buy_signals, sell_signals):
 
 # Main script
 file_path = '../indicators/data/Bitcoin Price (Oct2015-2022)_daily.csv'
-df = load_and_prepare_data(file_path, 'btc', True)
+df = load_and_prepare_data(file_path, 'btc', False)
 add_indicators_to_df(df)
 
 # Run the simulation with the new AD-based buy condition
-# final_balance, buy_signals, sell_signals = simulate_trading_strategy_with_ad_signals(df)
-# print(f"Final USD Balance: ${final_balance:.2f}")
+final_balance, buy_signals, sell_signals = simulate_trading_strategy_with_ad_signals(df)
+print(f"Final USD Balance: ${final_balance:.2f}")
 # Plot the AD, TMA_AD, and buy/sell signals
-plot_price_and_tma_with_sma_crossover(df, None, None, 'btc')
-plot_ad_tma_sma_with_signals(df, None, None)
+plot_price_and_tma_with_sma_crossover(df, buy_signals, sell_signals, 'btc')
+plot_ad_tma_sma_with_signals(df, buy_signals, sell_signals)
 
 '''Scan'''
 
