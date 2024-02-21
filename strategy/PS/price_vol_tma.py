@@ -1,8 +1,11 @@
+from datetime import datetime
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import cryptocompare
+import requests
 
 
 def smoothed_moving_average(values, window):
@@ -25,13 +28,15 @@ def calculate_ad(high, low, close, volume):
     return np.cumsum(mfv)
 
 
-def load_and_prepare_data(file_path, live):
+def load_and_prepare_data(file_path, ticker, live):
     """Load and prepare data from CSV file."""
     if live is False:
         df = pd.read_csv(file_path, skiprows=0)
         df['Date'] = pd.to_datetime(df['Date'])
     else:
-        df = pd.DataFrame(cryptocompare.get_historical_price_hour('arb', currency='USDT', exchange='Binance'))
+        df = pd.DataFrame(cryptocompare.get_historical_price_hour(ticker, currency='USDT', exchange='Binance'))
+        if True is df.empty:
+            return None
         df['Date'] = pd.to_datetime(df['time'], unit='s')
         df['Close'] = df['close']
         df['High'] = df['high']
@@ -54,7 +59,7 @@ def add_indicators_to_df(df):
     df['SMA_144'] = smoothed_moving_average(df['High'], 144)
 
 
-def plot_price_and_tma_with_sma_crossover(df, buy_signals, sell_signals):
+def plot_price_and_tma_with_sma_crossover(df, buy_signals, sell_signals, ticker):
     """Plot Close Price, TMA_PRICE, and SMA_PRICE with fill between based on SMA/TMA crossovers."""
     fig, ax = plt.subplots(figsize=(14, 7))
 
@@ -85,7 +90,7 @@ def plot_price_and_tma_with_sma_crossover(df, buy_signals, sell_signals):
             ax.axvspan(sell_signal - pd.Timedelta(days=0.5), sell_signal + pd.Timedelta(days=0.5), color='red',
                        alpha=0.7)
     else:
-        signal_one(ax)
+        signal_two(ax)
 
     # Fill based on crossovers
     ax.fill_between(df['Date'], df['SMA_PRICE'], df['TMA_PRICE'], where=df['SMA_PRICE'] >= df['TMA_PRICE'],
@@ -94,7 +99,7 @@ def plot_price_and_tma_with_sma_crossover(df, buy_signals, sell_signals):
                     alpha=0.5, label='SMA Crossover Down')
 
     # Labeling and formatting
-    ax.set_title('Close Price, TMA, and SMA with Crossovers')
+    ax.set_title(f'{ticker}')
     ax.set_xlabel('Date')
     ax.set_ylabel('Price')
     ax.legend(loc='upper left')
@@ -104,15 +109,13 @@ def plot_price_and_tma_with_sma_crossover(df, buy_signals, sell_signals):
     plt.tight_layout()
     plt.show()
 
-
-# Main script
-file_path = '../indicators/data/Bitcoin Price (Oct2015-2022)_daily.csv'
-df = load_and_prepare_data(file_path, True)
-add_indicators_to_df(df)
 '''Strategy'''
 
+dates = []
 
 '''Safest, most hits but rare'''
+
+
 def signal_one(ax):
     # Initialize a variable to track the previous row's SMA_PRICE and TMA_PRICE
     previous_sma_price = None
@@ -130,39 +133,29 @@ def signal_one(ax):
         if previous_sma_price <= previous_tma_price and row['SMA_PRICE'] > row['TMA_PRICE']:
             # Also ensure SMA_AD > TMA_AD at the crossover point
             if row['SMA_AD'] > row['TMA_AD']:
-                if row['SMA_33'] > row['SMA_144']:
-                    ax.axvline(x=row['Date'], color='green', alpha=0.7)
-                    print(row['Date'])
+                # if row['SMA_33'] > row['SMA_144']:
+                ax.axvline(x=row['Date'], color='green', alpha=0.7)
+                dates.append(row['Date'])
 
         # Update the previous values for the next iteration
         previous_sma_price = row['SMA_PRICE']
         previous_tma_price = row['TMA_PRICE']
 
 
-# Using derivatives
+# Using AD MA crossover
 def signal_two(ax):
-    # Initialize a variable to track the previous row's SMA_PRICE and TMA_PRICE
-    previous_sma_price = None
-    previous_tma_price = None
+    sma_tma_diff = df['SMA_AD'] - df['TMA_AD']
+    prev_sma_tma_diff = sma_tma_diff.shift(1)
+    # Get indices of crossovers
+    tolerance = 0.01  # Define a suitable tolerance level for your data
+    crossover_up = (prev_sma_tma_diff < -tolerance) & (sma_tma_diff >= tolerance)
+    crossover_down = (prev_sma_tma_diff > tolerance) & (sma_tma_diff <= -tolerance)
+    crossover_up_indices = np.where(crossover_up)[0]
+    crossover_down_indices = np.where(crossover_down)[0]
 
-    # Iterate through the DataFrame
-    for index, row in df.iterrows():
-        # Check if this is the first row
-        if previous_sma_price is None or previous_tma_price is None:
-            previous_sma_price = row['SMA_PRICE']
-            previous_tma_price = row['TMA_PRICE']
-            continue
-
-        # Check if SMA_PRICE crossed TMA_PRICE to the upside
-        if previous_sma_price <= previous_tma_price and row['SMA_PRICE'] > row['TMA_PRICE']:
-            # Also ensure SMA_AD > TMA_AD at the crossover point
-            if row['SMA_AD'] > row['TMA_AD']:
-                if row['SMA_33'] > row['SMA_144']:
-                    ax.axvline(x=row['Date'], color='green', alpha=0.7)
-
-        # Update the previous values for the next iteration
-        previous_sma_price = row['SMA_PRICE']
-        previous_tma_price = row['TMA_PRICE']
+    # Loop through the crossover_up indices and draw vertical lines at each corresponding date
+    for idx in crossover_up_indices:
+        ax.axvline(x=df['Date'][idx], color='green', label='Crossover Up' if idx == crossover_up[0] else "", zorder=5)
 
 
 def simulate_trading_strategy_with_ad_signals(df):
@@ -216,7 +209,7 @@ def plot_ad_tma_sma_with_signals(df, buy_signals, sell_signals):
             ax.axvspan(sell_signal - pd.Timedelta(days=0.5), sell_signal + pd.Timedelta(days=0.5), color='red',
                        alpha=0.5)
     else:
-        signal_one(ax)
+        signal_two(ax)
 
     ax.fill_between(df['Date'], ax.get_ylim()[0], ax.get_ylim()[1], where=df['TMA_PRICE'] <= df['SMA_PRICE'],
                     color='yellow', alpha=0.2, label='TMA > Close (Yellow)')
@@ -234,9 +227,54 @@ def plot_ad_tma_sma_with_signals(df, buy_signals, sell_signals):
     plt.show()
 
 
+# Main script
+file_path = '../indicators/data/Bitcoin Price (Oct2015-2022)_daily.csv'
+df = load_and_prepare_data(file_path, 'btc', True)
+add_indicators_to_df(df)
+
 # Run the simulation with the new AD-based buy condition
-final_balance, buy_signals, sell_signals = simulate_trading_strategy_with_ad_signals(df)
-print(f"Final USD Balance: ${final_balance:.2f}")
+# final_balance, buy_signals, sell_signals = simulate_trading_strategy_with_ad_signals(df)
+# print(f"Final USD Balance: ${final_balance:.2f}")
 # Plot the AD, TMA_AD, and buy/sell signals
-plot_price_and_tma_with_sma_crossover(df, None, None)
+plot_price_and_tma_with_sma_crossover(df, None, None, 'btc')
 plot_ad_tma_sma_with_signals(df, None, None)
+
+'''Scan'''
+
+
+def remove_usdt_from_symbols(symbols):
+    # Remove 'USDT' from each symbol
+    return [symbol.replace('USDT', '') for symbol in symbols]
+
+
+def list_binance_perpetuals():
+    # Binance API endpoint for futures exchange information
+    url = 'https://fapi.binance.com/fapi/v1/exchangeInfo'
+
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # This will raise an HTTPError if the HTTP request returned an unsuccessful status code
+        data = response.json()
+
+        # Extract the symbols that are perpetual futures
+        perpetuals = [symbol['symbol'] for symbol in data['symbols'] if symbol['contractType'] == 'PERPETUAL']
+        return perpetuals
+
+    except requests.RequestException as e:
+        print(f"Error fetching data from Binance: {e}")
+        return []
+
+
+def test_tickers():
+    return ['btc', 'theta', 'grt', 'icp']
+
+# for ticker in remove_usdt_from_symbols(list_binance_perpetuals()):
+# for ticker in test_tickers():
+#     df = load_and_prepare_data(file_path, ticker, True)
+#     if df is None:
+#         continue
+#     add_indicators_to_df(df)
+#     plot_price_and_tma_with_sma_crossover(df, None, None, ticker)
+    # print(f'{ticker} done.')
+
+print(sorted(dates))
