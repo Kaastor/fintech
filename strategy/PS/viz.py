@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -27,17 +28,49 @@ def load_and_prepare_data(file_path, ticker, live):
     return df
 
 
+def highlight_ad_trend(df):
+    # Initialize the start variables for both Ascending and Descending trends
+    start_asc = None
+    start_desc = None
+    # Loop through the DataFrame to find Ascending and Descending segments
+    for i in range(1, len(df)):
+        # Check for Ascending segments
+        if df['TMA_AD_TREND'].iloc[i] == 'Ascending' and start_asc is None:
+            start_asc = i  # Mark the start of an Ascending segment
+        elif df['TMA_AD_TREND'].iloc[i] != 'Ascending' and start_asc is not None:
+            # Highlight the Ascending segment found
+            plt.fill_betweenx(y=[df['TMA_AD'].min(), df['TMA_AD'].max()], x1=df['Date'].iloc[start_asc], x2=df['Date'].iloc[i], color='gold', alpha=0.1)
+            start_asc = None  # Reset start for the next Ascending segment
+        # Check for Descending segments
+        if df['TMA_AD_TREND'].iloc[i] == 'Descending' and start_desc is None:
+            start_desc = i  # Mark the start of a Descending segment
+        elif df['TMA_AD_TREND'].iloc[i] != 'Descending' and start_desc is not None:
+            # Highlight the Descending segment found
+            plt.fill_betweenx(y=[df['TMA_AD'].min(), df['TMA_AD'].max()], x1=df['Date'].iloc[start_desc], x2=df['Date'].iloc[i], color='blue', alpha=0.1)
+            start_desc = None  # Reset start for the next Descending segment
+
+    # Highlight the last segments if they are Ascending or Descending
+    if start_asc is not None:
+        plt.fill_betweenx(y=[df['TMA_AD'].min(), df['TMA_AD'].max()], x1=df['Date'].iloc[start_asc], x2=df['Date'].iloc[-1], color='gold', alpha=0.1)
+    if start_desc is not None:
+        plt.fill_betweenx(y=[df['TMA_AD'].min(), df['TMA_AD'].max()], x1=df['Date'].iloc[start_desc], x2=df['Date'].iloc[-1], color='blue', alpha=0.1)
+
+
+
 def add_indicators_to_df(df):
     """Add AD and TMA indicators to the DataFrame."""
     high, low, close, volume = df['High'].values, df['Low'].values, df['Close'].values, df['Volume'].values
     df['AD'] = calculate_ad(high, low, close, volume)
+    df['SMA_AD'] = smoothed_moving_average(df['AD'], 14)
     df['TMA_AD'] = triangular_moving_average(df['AD'].values, 59)
+
     df['TMA_PRICE'] = exponential_moving_average(df['Close'].values, 60)
     df['SMA_PRICE'] = smoothed_moving_average(df['Close'], 14)
-    df['SMA_AD'] = smoothed_moving_average(df['AD'], 14)
-    df['SMA_33'] = smoothed_moving_average(df['Close'], 44)
-    df['SMA_144'] = smoothed_moving_average(df['Close'], 160)
-    df['SMA_200'] = smoothed_moving_average(df['Close'], 200)
+
+    df['TMA_AD_1DERIVATIVE'] = df['TMA_AD'].diff()
+    df['TMA_AD_TREND'] = 'Flat'
+    df.loc[df['TMA_AD_1DERIVATIVE'] > 0, 'TMA_AD_TREND'] = 'Ascending'
+    df.loc[df['TMA_AD_1DERIVATIVE'] < 0, 'TMA_AD_TREND'] = 'Descending'
 
 
 def plot_price_and_tma_with_sma_crossover(df, ticker):
@@ -45,11 +78,12 @@ def plot_price_and_tma_with_sma_crossover(df, ticker):
     fig, ax = plt.subplots(figsize=(14, 7))
 
     # Plotting the lines
-    ax.plot(df['Date'], df['Close'], label='Close Price', color='black', alpha=0.75)
     ax.plot(df['Date'], df['TMA_PRICE'], label='TMA of Price', color='red', alpha=0.75)
     ax.plot(df['Date'], df['SMA_PRICE'], label='SMA of Price', color='green', alpha=0.75)
 
-    signal_one(ax)
+    # signal_one(ax)
+    highlight_ad_trend(df)
+
     ax.fill_between(df['Date'], df['SMA_PRICE'], df['TMA_PRICE'], where=df['SMA_PRICE'] >= df['TMA_PRICE'],
                     color='gold', alpha=0.5, label='SMA Crossover Up')
     ax.fill_between(df['Date'], df['SMA_PRICE'], df['TMA_PRICE'], where=df['SMA_PRICE'] < df['TMA_PRICE'], color='blue',
@@ -95,9 +129,8 @@ def signal_one(ax):
         if previous_sma_price <= previous_tma_price and row['SMA_PRICE'] > row['TMA_PRICE']:
             # Also ensure SMA_AD > TMA_AD at the crossover point
             if row['SMA_AD'] > row['TMA_AD']:
-                if row['SMA_33'] > row['SMA_144']:
-                    ax.axvline(x=row['Date'], color='green', alpha=0.7)
-                    dates.append(row['Date'])
+                ax.axvline(x=row['Date'], color='green', alpha=0.7)
+                dates.append(row['Date'])
 
         # Update the previous values for the next iteration
         previous_sma_price = row['SMA_PRICE']
@@ -106,20 +139,14 @@ def signal_one(ax):
 
 def plot_ad_tma_sma_with_signals(df):
     fig, ax = plt.subplots(figsize=(14, 7))
-    # ax.plot(df['Date'], df['AD'], label='AD', color='black', alpha=0.75)
     ax.plot(df['Date'], df['TMA_AD'], label='TMA_AD', color='red', alpha=0.75)
     ax.plot(df['Date'], df['SMA_AD'], label='SMA_AD (12)', color='blue', alpha=0.75)  # SMA line
 
-    # Fill areas based on AD and TMA_AD
     ax.fill_between(df['Date'], df['AD'], df['TMA_AD'], where=df['AD'] >= df['TMA_AD'], color='gold', alpha=0.5)
     ax.fill_between(df['Date'], df['AD'], df['TMA_AD'], where=df['AD'] < df['TMA_AD'], color='blue', alpha=0.5)
 
-    signal_one(ax)
-
-    ax.fill_between(df['Date'], ax.get_ylim()[0], ax.get_ylim()[1], where=df['TMA_PRICE'] <= df['SMA_PRICE'],
-                    color='yellow', alpha=0.2, label='TMA > Close (Yellow)')
-    ax.fill_between(df['Date'], ax.get_ylim()[0], ax.get_ylim()[1], where=df['TMA_PRICE'] >= df['SMA_PRICE'],
-                    color='blue', alpha=0.2, label='TMA <= Close (Blue)')
+    # signal_one(ax)
+    highlight_ad_trend(df)
 
     ax.set_title('AD, TMA_AD, and SMA_AD with Buy/Sell Signals')
     ax.set_xlabel('Date')
