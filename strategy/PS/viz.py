@@ -1,9 +1,7 @@
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 import cryptocompare
-import requests
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
+import pandas as pd
 
 from strategy.PS.util import exponential_moving_average, calculate_ad, triangular_moving_average, \
     smoothed_moving_average
@@ -12,7 +10,7 @@ from strategy.PS.util import exponential_moving_average, calculate_ad, triangula
 def load_and_prepare_data(file_path, ticker, live):
     """Load and prepare data from CSV file."""
     if live is False:
-        df = pd.read_csv(file_path, skiprows=0)
+        df = pd.read_csv(file_path, skiprows=0).iloc[::-1].reset_index(drop=True)
         df['Date'] = pd.to_datetime(df['Date'])
     else:
         df = pd.DataFrame(cryptocompare.get_historical_price_hour(ticker, currency='USDT', exchange='Binance'))
@@ -28,7 +26,8 @@ def load_and_prepare_data(file_path, ticker, live):
     return df
 
 
-def highlight_ad_trend(df):
+# TODO połączyć z przecięciami AD
+def highlight_ad_trend(df, min, max):
     # Initialize the start variables for both Ascending and Descending trends
     start_asc = None
     start_desc = None
@@ -39,22 +38,25 @@ def highlight_ad_trend(df):
             start_asc = i  # Mark the start of an Ascending segment
         elif df['TMA_AD_TREND'].iloc[i] != 'Ascending' and start_asc is not None:
             # Highlight the Ascending segment found
-            plt.fill_betweenx(y=[df['TMA_AD'].min(), df['TMA_AD'].max()], x1=df['Date'].iloc[start_asc], x2=df['Date'].iloc[i], color='gold', alpha=0.1)
+            plt.fill_betweenx(y=[min, max], x1=df['Date'].iloc[start_asc],
+                              x2=df['Date'].iloc[i], color='gold', alpha=0.2)
             start_asc = None  # Reset start for the next Ascending segment
         # Check for Descending segments
         if df['TMA_AD_TREND'].iloc[i] == 'Descending' and start_desc is None:
             start_desc = i  # Mark the start of a Descending segment
         elif df['TMA_AD_TREND'].iloc[i] != 'Descending' and start_desc is not None:
             # Highlight the Descending segment found
-            plt.fill_betweenx(y=[df['TMA_AD'].min(), df['TMA_AD'].max()], x1=df['Date'].iloc[start_desc], x2=df['Date'].iloc[i], color='blue', alpha=0.1)
+            plt.fill_betweenx(y=[min, max], x1=df['Date'].iloc[start_desc],
+                              x2=df['Date'].iloc[i], color='blue', alpha=0.2)
             start_desc = None  # Reset start for the next Descending segment
 
     # Highlight the last segments if they are Ascending or Descending
     if start_asc is not None:
-        plt.fill_betweenx(y=[df['TMA_AD'].min(), df['TMA_AD'].max()], x1=df['Date'].iloc[start_asc], x2=df['Date'].iloc[-1], color='gold', alpha=0.1)
+        plt.fill_betweenx(y=[min, max], x1=df['Date'].iloc[start_asc],
+                          x2=df['Date'].iloc[-1], color='gold', alpha=0.2)
     if start_desc is not None:
-        plt.fill_betweenx(y=[df['TMA_AD'].min(), df['TMA_AD'].max()], x1=df['Date'].iloc[start_desc], x2=df['Date'].iloc[-1], color='blue', alpha=0.1)
-
+        plt.fill_betweenx(y=[min, max], x1=df['Date'].iloc[start_desc],
+                          x2=df['Date'].iloc[-1], color='blue', alpha=0.2)
 
 
 def add_indicators_to_df(df):
@@ -73,16 +75,16 @@ def add_indicators_to_df(df):
     df.loc[df['TMA_AD_1DERIVATIVE'] < 0, 'TMA_AD_TREND'] = 'Descending'
 
 
-def plot_price_and_tma_with_sma_crossover(df, ticker):
+def plot_price(df, ticker):
     """Plot Close Price, TMA_PRICE, and SMA_PRICE with fill between based on SMA/TMA crossovers."""
     fig, ax = plt.subplots(figsize=(14, 7))
+
+    # signal_one(ax)
+    highlight_ad_trend(df, df['TMA_PRICE'].min(), df['TMA_PRICE'].max())
 
     # Plotting the lines
     ax.plot(df['Date'], df['TMA_PRICE'], label='TMA of Price', color='red', alpha=0.75)
     ax.plot(df['Date'], df['SMA_PRICE'], label='SMA of Price', color='green', alpha=0.75)
-
-    # signal_one(ax)
-    highlight_ad_trend(df)
 
     ax.fill_between(df['Date'], df['SMA_PRICE'], df['TMA_PRICE'], where=df['SMA_PRICE'] >= df['TMA_PRICE'],
                     color='gold', alpha=0.5, label='SMA Crossover Up')
@@ -137,16 +139,16 @@ def signal_one(ax):
         previous_tma_price = row['TMA_PRICE']
 
 
-def plot_ad_tma_sma_with_signals(df):
+def plot_volume(df):
     fig, ax = plt.subplots(figsize=(14, 7))
     ax.plot(df['Date'], df['TMA_AD'], label='TMA_AD', color='red', alpha=0.75)
     ax.plot(df['Date'], df['SMA_AD'], label='SMA_AD (12)', color='blue', alpha=0.75)  # SMA line
 
+    # signal_one(ax)
+    highlight_ad_trend(df, df['TMA_AD'].min(), df['TMA_AD'].max())
+
     ax.fill_between(df['Date'], df['AD'], df['TMA_AD'], where=df['AD'] >= df['TMA_AD'], color='gold', alpha=0.5)
     ax.fill_between(df['Date'], df['AD'], df['TMA_AD'], where=df['AD'] < df['TMA_AD'], color='blue', alpha=0.5)
-
-    # signal_one(ax)
-    highlight_ad_trend(df)
 
     ax.set_title('AD, TMA_AD, and SMA_AD with Buy/Sell Signals')
     ax.set_xlabel('Date')
@@ -160,8 +162,8 @@ def plot_ad_tma_sma_with_signals(df):
 
 
 # Main script
-file_path = '../indicators/data/Bitcoin Price (Oct2015-2022)_daily.csv'
+file_path = '../indicators/data/Binance_BTCUSDT_d.csv'
 df = load_and_prepare_data(file_path, 'btc', False)
 add_indicators_to_df(df)
-plot_price_and_tma_with_sma_crossover(df, 'btc')
-plot_ad_tma_sma_with_signals(df)
+plot_price(df, 'btc')
+plot_volume(df)
