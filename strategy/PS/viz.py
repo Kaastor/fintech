@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from scipy.ndimage import gaussian_filter1d
 
 import cryptocompare
 import matplotlib.dates as mdates
@@ -57,11 +58,11 @@ def add_indicators_to_df(df):
     """Add AD and TMA indicators to the DataFrame."""
     high, low, close, volume = df['High'].values, df['Low'].values, df['Close'].values, df['Volume'].values
     df['AD'] = calculate_ad(high, low, close, volume)
-    df['SMA_AD'] = smoothed_moving_average(df['AD'], 14)
-    df['TMA_AD'] = triangular_moving_average(df['AD'].values, 59)
+    df['SMA_AD'] = gaussian_filter1d(df['AD'], sigma=2)
+    df['TMA_AD'] = triangular_moving_average(df['AD'].values, 55)
 
-    df['TMA_PRICE'] = triangular_moving_average(df['Close'].values, 60)
-    df['SMA_PRICE'] = smoothed_moving_average(df['Close'], 14)
+    df['SMA_PRICE'] = gaussian_filter1d(df['Close'], sigma=2)
+    df['TMA_PRICE'] = triangular_moving_average(df['Close'].values, 55)
 
     df['SMA_33'] = smoothed_moving_average(df['Close'], 33)
     df['SMA_144'] = smoothed_moving_average(df['Close'], 144)
@@ -98,11 +99,11 @@ def plot_price(df, ticker, tf):
     ax.set_title(f'{ticker}')
     ax.set_xlabel('Date')
     ax.set_ylabel('Price')
-    ax.legend(loc='upper left')
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
     plt.xticks(rotation=45)
     plt.grid(True)
     plt.tight_layout()
+    ax.set_yticklabels([])
     plt.show()
 
 
@@ -116,14 +117,14 @@ def plot_volume(df, ticker, tf):
     ax.fill_between(df['Date'], df['AD'], df['TMA_AD'], where=df['AD'] >= df['TMA_AD'], color='gold', alpha=0.5)
     ax.fill_between(df['Date'], df['AD'], df['TMA_AD'], where=df['AD'] < df['TMA_AD'], color='blue', alpha=0.5)
 
-    ax.set_title('AD, TMA_AD, and SMA_AD with Buy/Sell Signals')
+    ax.set_title(f'{ticker}')
     ax.set_xlabel('Date')
     ax.set_ylabel('AD Value')
-    ax.legend()
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
     plt.xticks(rotation=45)
     plt.grid(True)
     plt.tight_layout()
+    ax.set_yticklabels([])
     plt.show()
 
 
@@ -176,10 +177,10 @@ add_indicators_to_df(df)
 plot_price(df, ticker, 'day')
 plot_volume(df, ticker, 'day')
 
-df = load_and_prepare_data_hour(ticker)
-add_indicators_to_df(df)
-plot_price(df, ticker, 'hour')
-plot_volume(df, ticker, 'hour')
+# df = load_and_prepare_data_hour(ticker)
+# add_indicators_to_df(df)
+# plot_price(df, ticker, 'hour')
+# plot_volume(df, ticker, 'hour')
 
 print(signal_one(df, tf='hour'))
 
