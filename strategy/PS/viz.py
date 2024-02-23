@@ -8,11 +8,13 @@ import numpy as np
 import pandas as pd
 import requests
 
-from strategy.PS.util import calculate_ad, triangular_moving_average, smoothed_moving_average
+from strategy.PS.util import calculate_ad, triangular_moving_average, smoothed_moving_average, \
+    exponential_moving_average
 
 
 # TODO: analiza prędkości (siły trendu) jako 2 pochodna TMA_AD i wchodzić tylko jak ROŚNIE (a nie spada)!
 # FIXME: na btc nie pokazało na 1h wejścia poprawnego gold P&V
+# TODO: a może wystarczy żeby sprawdzić jaki jest trend MA? jeżeli UP (z pochodnej) to
 def load_and_prepare_data_daily(file_path, ticker, live):
     """Load and prepare data from CSV file."""
     if live is False:
@@ -59,72 +61,69 @@ def add_indicators_to_df(df):
     high, low, close, volume = df['High'].values, df['Low'].values, df['Close'].values, df['Volume'].values
     df['AD'] = calculate_ad(high, low, close, volume)
     df['SMA_AD'] = gaussian_filter1d(df['AD'], sigma=2)
-    df['TMA_AD'] = triangular_moving_average(df['AD'].values, 55)
+    df['TMA_AD'] = exponential_moving_average(df['AD'].values, 60)
 
     df['SMA_PRICE'] = gaussian_filter1d(df['Close'], sigma=2)
-    df['TMA_PRICE'] = triangular_moving_average(df['Close'].values, 55)
+    df['TMA_PRICE'] = exponential_moving_average(df['Close'].values, 60)
 
     df['SMA_33'] = smoothed_moving_average(df['Close'], 33)
     df['SMA_144'] = smoothed_moving_average(df['Close'], 144)
 
     df['TMA_AD_1DERIVATIVE'] = df['TMA_AD'].diff()
     df['TMA_AD_2DERIVATIVE'] = df['TMA_AD_1DERIVATIVE'].diff()
+    df['GAUSS_AD_1DERIVATIVE'] = gaussian_filter1d(df['TMA_AD_1DERIVATIVE'], sigma=2)
+
+    # unused now
     df['TMA_AD_TREND'] = 'Flat'
     df.loc[df['TMA_AD_1DERIVATIVE'] > 0, 'TMA_AD_TREND'] = 'Ascending'
     df.loc[df['TMA_AD_1DERIVATIVE'] < 0, 'TMA_AD_TREND'] = 'Descending'
     df['TMA_AD_CROSSES'] = np.where(df['AD'] >= df['TMA_AD'], 'Ascending', 'Descending')
 
 
-def plot_price(df, ticker, tf):
-    """Plot Close Price, TMA_PRICE, and SMA_PRICE with fill between based on SMA/TMA crossovers."""
-    fig, ax = plt.subplots(figsize=(14, 7))
+def plot_price_volume_and_acceleration(df, ticker, tf):
+    fig, ax = plt.subplots(3, 1, figsize=(12, 10))  # 2 Rows, 1 Column
 
-    signal_one(df, ax, tf)
+    ax[0].plot(df['Date'], df['TMA_PRICE'], label='TMA of Price', color='red', alpha=0.75)
+    ax[0].plot(df['Date'], df['SMA_PRICE'], label='SMA of Price', color='blue', alpha=0.75)
 
-    # Plotting the lines
-    ax.plot(df['Date'], df['TMA_PRICE'], label='TMA of Price', color='red', alpha=0.75)
-    ax.plot(df['Date'], df['SMA_PRICE'], label='SMA of Price', color='blue', alpha=0.75)
-
-    ax.fill_between(df['Date'], df['SMA_PRICE'], df['TMA_PRICE'], where=df['SMA_PRICE'] >= df['TMA_PRICE'],
-                    color='gold', alpha=0.5, label='SMA Crossover Up')
-    ax.fill_between(df['Date'], df['SMA_PRICE'], df['TMA_PRICE'], where=df['SMA_PRICE'] < df['TMA_PRICE'], color='blue',
-                    alpha=0.5, label='SMA Crossover Down')
-
-    ax.fill_between(df['Date'], ax.get_ylim()[0], ax.get_ylim()[1], where=df['TMA_AD'] <= df['SMA_AD'], color='yellow',
-                    alpha=0.2, label='TMA > Close (Yellow)')
-    ax.fill_between(df['Date'], ax.get_ylim()[0], ax.get_ylim()[1], where=df['TMA_AD'] >= df['SMA_AD'], color='blue',
-                    alpha=0.2, label='TMA <= Close (Blue)')
+    ax[0].fill_between(df['Date'], df['SMA_PRICE'], df['TMA_PRICE'], where=df['SMA_PRICE'] >= df['TMA_PRICE'],
+                       color='gold', alpha=0.5, label='SMA Crossover Up')
+    ax[0].fill_between(df['Date'], df['SMA_PRICE'], df['TMA_PRICE'], where=df['SMA_PRICE'] < df['TMA_PRICE'],
+                       color='blue',
+                       alpha=0.5, label='SMA Crossover Down')
 
     # Labeling and formatting
-    ax.set_title(f'{ticker}')
-    ax.set_xlabel('Date')
-    ax.set_ylabel('Price')
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
-    plt.xticks(rotation=45)
-    plt.grid(True)
+    ax[0].set_title(f'{ticker}')
+    ax[0].set_xlabel('Date')
+    ax[0].set_ylabel('Price')
+    ax[0].xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+    ax[0].grid(True)
+
+    # Plot 2: MA
+    ax[1].plot(df['Date'], df['TMA_AD'], label='TMA_AD', color='red', alpha=0.75)
+    ax[1].plot(df['Date'], df['SMA_AD'], label='SMA_AD (12)', color='blue', alpha=0.75)  # SMA line
+    # signal_one(df, ax, tf)
+    ax[1].fill_between(df['Date'], df['AD'], df['TMA_AD'], where=df['AD'] >= df['TMA_AD'], color='gold', alpha=0.5)
+    ax[1].fill_between(df['Date'], df['AD'], df['TMA_AD'], where=df['AD'] < df['TMA_AD'], color='blue', alpha=0.5)
+
+    ax[1].set_title(f'{ticker}')
+    ax[1].set_xlabel('Date')
+    ax[1].set_ylabel('AD Value')
+    ax[1].xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+    ax[1].set_yticklabels([])
+    ax[1].grid(True)
+
+    # Plot 2: Acceleration
+    acceleration_color = df['GAUSS_AD_1DERIVATIVE'].apply(lambda x: 'blue' if x < 0 else 'gold')
+    ax[2].bar(range(len(df['GAUSS_AD_1DERIVATIVE'])), df['GAUSS_AD_1DERIVATIVE'], color=acceleration_color.tolist(),
+              width=2)
+    ax[2].set_title('Acceleration/Deceleration over Time')
+    ax[2].set_xlabel('Time Steps')
+    ax[2].set_ylabel('Acceleration')
+    ax[2].grid(True)
+
+    # Displaying the corrected plots
     plt.tight_layout()
-    ax.set_yticklabels([])
-    plt.show()
-
-
-def plot_volume(df, ticker, tf):
-    fig, ax = plt.subplots(figsize=(14, 7))
-    ax.plot(df['Date'], df['TMA_AD'], label='TMA_AD', color='red', alpha=0.75)
-    ax.plot(df['Date'], df['SMA_AD'], label='SMA_AD (12)', color='blue', alpha=0.75)  # SMA line
-
-    signal_one(df, ax, tf)
-
-    ax.fill_between(df['Date'], df['AD'], df['TMA_AD'], where=df['AD'] >= df['TMA_AD'], color='gold', alpha=0.5)
-    ax.fill_between(df['Date'], df['AD'], df['TMA_AD'], where=df['AD'] < df['TMA_AD'], color='blue', alpha=0.5)
-
-    ax.set_title(f'{ticker}')
-    ax.set_xlabel('Date')
-    ax.set_ylabel('AD Value')
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
-    plt.xticks(rotation=45)
-    plt.grid(True)
-    plt.tight_layout()
-    ax.set_yticklabels([])
     plt.show()
 
 
@@ -174,13 +173,11 @@ ticker = 'btc'
 file_path = '../indicators/data/Binance_BTCUSDT_d.csv'
 df = load_and_prepare_data_daily(file_path, ticker, True)
 add_indicators_to_df(df)
-plot_price(df, ticker, 'day')
-plot_volume(df, ticker, 'day')
+plot_price_volume_and_acceleration(df, ticker, 'day')
 
 # df = load_and_prepare_data_hour(ticker)
 # add_indicators_to_df(df)
-# plot_price(df, ticker, 'hour')
-# plot_volume(df, ticker, 'hour')
+# plot_price_volume_and_acceleration(df, ticker, 'hour')
 
 print(signal_one(df, tf='hour'))
 
