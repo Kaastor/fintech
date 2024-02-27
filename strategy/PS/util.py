@@ -57,3 +57,27 @@ def calculate_ad(high, low, close, volume):
     mfm = np.where((high - low) == 0, 0, mfm)
     mfv = mfm * volume
     return np.cumsum(mfv)
+
+
+def calculate_obv(closing_prices, volumes):
+    """
+    Calculate the On Balance Volume (OBV).
+
+    Parameters:
+    closing_prices: List of closing prices of the security.
+    volumes: List of trading volumes of the security.
+
+    Returns:
+    List of OBV values.
+    """
+    obv = [0]  # Start the OBV from 0 for the first data point
+
+    for i in range(1, len(closing_prices)):
+        if closing_prices[i] > closing_prices[i - 1]:
+            obv.append(obv[-1] + volumes[i])  # Price increased, add volume to OBV
+        elif closing_prices[i] < closing_prices[i - 1]:
+            obv.append(obv[-1] - volumes[i])  # Price decreased, subtract volume from OBV
+        else:
+            obv.append(obv[-1])  # Price unchanged, OBV remains the same
+
+    return obv
