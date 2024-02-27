@@ -10,7 +10,11 @@ import requests
 from strategy.PS.util import *
 
 '''
-AD jako spojrzenie na instrument czy bearish czy bullish pod kątem volumenu
+1. Napisz strategię (3x gold? 2x gold?)
+2. Przenieś na TW
+3. Zrób back-testing
+
+Ważniejsze jest ryzyko niż zysk!
 '''
 
 
@@ -21,7 +25,7 @@ def load_and_prepare_data_daily(file_path, ticker, live):
         # df = pd.read_csv(file_path, skiprows=0).iloc[::-1].reset_index(drop=True)
         df['Date'] = pd.to_datetime(df['Date'])
     else:
-        df = pd.DataFrame(cryptocompare.get_historical_price_day(ticker, currency='USDT', exchange='Binance'))
+        df = pd.DataFrame(cryptocompare.get_historical_price_hour(ticker, currency='USDT', exchange='Binance'))
         if True is df.empty:
             return None
         df['Date'] = pd.to_datetime(df['time'], unit='s')
@@ -59,22 +63,16 @@ def add_indicators_to_df(df):
     """Add AD and TMA indicators to the DataFrame."""
     high, low, close, volume = df['High'].values, df['Low'].values, df['Close'].values, df['Volume'].values
     df['AD'] = calculate_ad(high, low, close, volume)
-    df['SMA_AD'] = gaussian_filter1d(df['AD'], sigma=2)
+    df['SMA_AD'] = exponential_moving_average(df['AD'], 12)
     df['TMA_AD'] = exponential_moving_average(df['AD'].values, 60)
 
     df['ADW'] = calculate_ad_williams(high, low, close, df['Open'].values, volume)
-    df['SMA_ADW'] = gaussian_filter1d(df['ADW'], sigma=2)
+    df['SMA_ADW'] = exponential_moving_average(df['ADW'], 12)
     df['TMA_ADW'] = exponential_moving_average(df['ADW'].values, 60)
     df['TMA_ADW_1DERIVATIVE'] = df['TMA_ADW'].diff()
     df['GAUSS_ADW_1DERIVATIVE'] = gaussian_filter1d(df['TMA_ADW_1DERIVATIVE'], sigma=6)
 
-    df['PVT'] = calculate_pvt(df['Close'].values, volume)
-    df['SMA_PVT'] = gaussian_filter1d(df['PVT'], sigma=2)
-    df['TMA_PVT'] = exponential_moving_average(df['PVT'].values, 60)
-    df['TMA_PVT_1DERIVATIVE'] = df['TMA_PVT'].diff()
-    df['GAUSS_PVT_1DERIVATIVE'] = gaussian_filter1d(df['TMA_PVT_1DERIVATIVE'], sigma=6)
-
-    df['SMA_PRICE'] = gaussian_filter1d(df['Close'], sigma=2)
+    df['SMA_PRICE'] = exponential_moving_average(df['Close'].values, 12)
     df['TMA_PRICE'] = exponential_moving_average(df['Close'].values, 60)
     df['TMA_PRICE_1DERIVATIVE'] = df['TMA_PRICE'].diff()
     df['GAUSS_PRICE_1DERIVATIVE'] = gaussian_filter1d(df['TMA_PRICE_1DERIVATIVE'], sigma=6)
@@ -84,7 +82,7 @@ def add_indicators_to_df(df):
 
 
 def plot_price_volume_and_acceleration(df, ticker, tf):
-    fig, ax = plt.subplots(4, 1, figsize=(25, 15), dpi=300)
+    fig, ax = plt.subplots(3, 1, figsize=(25, 15), dpi=300)
                            #gridspec_kw={'height_ratios': [3, 3, 3, 1]})  # 2 Rows, 1 Column
 
     ax[0].plot(df['Date'], df['TMA_PRICE'], label='TMA of Price', color='red', alpha=0.75)
@@ -105,8 +103,8 @@ def plot_price_volume_and_acceleration(df, ticker, tf):
     ax[1].plot(df['Date'], df['TMA_AD'], label='TMA_AD', color='red', alpha=0.75)
     ax[1].plot(df['Date'], df['SMA_AD'], label='SMA_AD (12)', color='blue', alpha=0.75)  # SMA line
     # signal_one(df, ax, tf)
-    ax[1].fill_between(df['Date'], df['AD'], df['TMA_AD'], where=df['AD'] >= df['TMA_AD'], color='gold', alpha=0.5)
-    ax[1].fill_between(df['Date'], df['AD'], df['TMA_AD'], where=df['AD'] < df['TMA_AD'], color='blue', alpha=0.5)
+    ax[1].fill_between(df['Date'], df['SMA_AD'], df['TMA_AD'], where=df['SMA_AD'] >= df['TMA_AD'], color='gold', alpha=0.5)
+    ax[1].fill_between(df['Date'], df['SMA_AD'], df['TMA_AD'], where=df['SMA_AD'] < df['TMA_AD'], color='blue', alpha=0.5)
     # signal_one(df, ax[1], tf)
     ax[1].set_title(f'AD-{ticker}')
     ax[1].xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
@@ -125,22 +123,6 @@ def plot_price_volume_and_acceleration(df, ticker, tf):
     ax[2].xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
     ax[2].set_yticklabels([])
     ax[2].grid(True)
-
-    ax[3].plot(df['Date'], df['TMA_PVT'], label='TMA_PVT', color='red', alpha=0.75)
-    ax[3].plot(df['Date'], df['SMA_PVT'], label='SMA_PVT (12)', color='blue', alpha=0.75)  # SMA line
-    # signal_one(df, ax, tf)
-    ax[3].fill_between(df['Date'], df['SMA_PVT'], df['TMA_PVT'], where=df['SMA_PVT'] >= df['TMA_PVT'], color='gold',
-                       alpha=0.5)
-    ax[3].fill_between(df['Date'], df['SMA_PVT'], df['TMA_PVT'], where=df['SMA_PVT'] < df['TMA_PVT'], color='blue',
-                       alpha=0.5)
-    # signal_one(df, ax[3], tf)
-    ax[3].set_title(f'PVT-{ticker}')
-    ax[3].xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
-    ax[3].set_yticklabels([])
-    ax[3].grid(True)
-
-
-
     # Displaying the corrected plots
     plt.tight_layout()
     plt.show()
@@ -215,7 +197,7 @@ def signal_one(df, ax=None, tf='day'):
 
 
 # Main script
-ticker = 'xrp'
+ticker = 'btc'
 file_path = '../indicators/data/Bitcoin Price (2014-2023)_daily.csv'
 df = load_and_prepare_data_daily(file_path, ticker, True)
 add_indicators_to_df(df)
