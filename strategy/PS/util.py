@@ -59,6 +59,12 @@ def calculate_ad(high, low, close, volume):
     return np.cumsum(mfv)
 
 
+def calculate_ad_williams(high, low, close, open_, volume):
+    """Calculate Accumulation Distribution (AD) indicator."""
+    mfm = ((close - open_) / (high - low))
+    mfv = mfm * volume
+    return np.cumsum(mfv)
+
 def calculate_obv(closing_prices, volumes):
     """
     Calculate the On Balance Volume (OBV).
@@ -81,3 +87,50 @@ def calculate_obv(closing_prices, volumes):
             obv.append(obv[-1])  # Price unchanged, OBV remains the same
 
     return obv
+
+
+def calculate_pvt(closing_prices, volumes):
+    """
+    Calculate the Price and Volume Trend (PVT).
+
+    Parameters:
+    closing_prices: List of closing prices of the security.
+    volumes: List of trading volumes of the security.
+
+    Returns:
+    List of PVT values.
+    """
+    pvt = [0]  # Initialize PVT with first value as 0
+
+    for i in range(1, len(closing_prices)):
+        price_change_ratio = (closing_prices[i] - closing_prices[i - 1]) / closing_prices[i - 1]
+        pvt_value = volumes[i] * price_change_ratio
+        pvt.append(pvt[-1] + pvt_value)  # Add the current day's value to the cumulative total
+
+    return pvt
+
+
+def calculate_wad_ndarray(high, low, close):
+    """
+    Calculate Williams' Accumulation/Distribution using NumPy ndarrays for high, low, and close prices.
+
+    :param high: NumPy ndarray of high prices.
+    :param low: NumPy ndarray of low prices.
+    :param close: NumPy ndarray of close prices.
+    :return: NumPy ndarray of WAD values.
+    """
+    wad = np.zeros(close.shape)
+
+    for i in range(1, len(close)):
+        if close[i] > close[i - 1]:
+            wad[i] = close[i] - np.minimum(low[i], close[i - 1])
+        elif close[i] < close[i - 1]:
+            wad[i] = close[i] - np.maximum(high[i], close[i - 1])
+        else:
+            wad[i] = 0.0
+
+    return np.cumsum(wad)
+
+
+
+

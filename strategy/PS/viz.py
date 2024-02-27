@@ -7,8 +7,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import requests
 
-from strategy.PS.util import calculate_ad, calculate_obv, triangular_moving_average, smoothed_moving_average, \
-    exponential_moving_average
+from strategy.PS.util import *
 
 '''
 AD jako spojrzenie na instrument czy bearish czy bullish pod kątem volumenu
@@ -22,7 +21,7 @@ def load_and_prepare_data_daily(file_path, ticker, live):
         # df = pd.read_csv(file_path, skiprows=0).iloc[::-1].reset_index(drop=True)
         df['Date'] = pd.to_datetime(df['Date'])
     else:
-        df = pd.DataFrame(cryptocompare.get_historical_price_hour(ticker, currency='USDT', exchange='Binance'))
+        df = pd.DataFrame(cryptocompare.get_historical_price_day(ticker, currency='USDT', exchange='Binance'))
         if True is df.empty:
             return None
         df['Date'] = pd.to_datetime(df['time'], unit='s')
@@ -56,7 +55,6 @@ def load_and_prepare_data_hour(ticker):
 
     return df
 
-
 def add_indicators_to_df(df):
     """Add AD and TMA indicators to the DataFrame."""
     high, low, close, volume = df['High'].values, df['Low'].values, df['Close'].values, df['Volume'].values
@@ -64,27 +62,29 @@ def add_indicators_to_df(df):
     df['SMA_AD'] = gaussian_filter1d(df['AD'], sigma=2)
     df['TMA_AD'] = exponential_moving_average(df['AD'].values, 60)
 
-    df['OBV'] = calculate_obv(close, volume)
-    df['SMA_OBV'] = gaussian_filter1d(df['OBV'], sigma=2)
-    # df['SMA_OBV'] = exponential_moving_average(df['OBV'].values, 14)
-    df['TMA_OBV'] = exponential_moving_average(df['OBV'].values, 60)
-    df['TMA_OBV_1DERIVATIVE'] = df['TMA_OBV'].diff()
-    df['GAUSS_OBV_1DERIVATIVE'] = gaussian_filter1d(df['TMA_OBV_1DERIVATIVE'], sigma=6)
+    df['ADW'] = calculate_ad_williams(high, low, close, df['Open'].values, volume)
+    df['SMA_ADW'] = gaussian_filter1d(df['ADW'], sigma=2)
+    df['TMA_ADW'] = exponential_moving_average(df['ADW'].values, 60)
+    df['TMA_ADW_1DERIVATIVE'] = df['TMA_ADW'].diff()
+    df['GAUSS_ADW_1DERIVATIVE'] = gaussian_filter1d(df['TMA_ADW_1DERIVATIVE'], sigma=6)
+
+    df['PVT'] = calculate_pvt(df['Close'].values, volume)
+    df['SMA_PVT'] = gaussian_filter1d(df['PVT'], sigma=2)
+    df['TMA_PVT'] = exponential_moving_average(df['PVT'].values, 60)
+    df['TMA_PVT_1DERIVATIVE'] = df['TMA_PVT'].diff()
+    df['GAUSS_PVT_1DERIVATIVE'] = gaussian_filter1d(df['TMA_PVT_1DERIVATIVE'], sigma=6)
 
     df['SMA_PRICE'] = gaussian_filter1d(df['Close'], sigma=2)
     df['TMA_PRICE'] = exponential_moving_average(df['Close'].values, 60)
     df['TMA_PRICE_1DERIVATIVE'] = df['TMA_PRICE'].diff()
     df['GAUSS_PRICE_1DERIVATIVE'] = gaussian_filter1d(df['TMA_PRICE_1DERIVATIVE'], sigma=6)
 
-    df['SMA_33'] = smoothed_moving_average(df['Close'], 33)
-    df['SMA_144'] = smoothed_moving_average(df['Close'], 144)
-
     df['TMA_AD_1DERIVATIVE'] = df['TMA_AD'].diff()
     df['GAUSS_AD_1DERIVATIVE'] = gaussian_filter1d(df['TMA_AD_1DERIVATIVE'], sigma=6)
 
 
 def plot_price_volume_and_acceleration(df, ticker, tf):
-    fig, ax = plt.subplots(3, 1, figsize=(25, 15), dpi=300)
+    fig, ax = plt.subplots(4, 1, figsize=(25, 15), dpi=300)
                            #gridspec_kw={'height_ratios': [3, 3, 3, 1]})  # 2 Rows, 1 Column
 
     ax[0].plot(df['Date'], df['TMA_PRICE'], label='TMA of Price', color='red', alpha=0.75)
@@ -113,26 +113,33 @@ def plot_price_volume_and_acceleration(df, ticker, tf):
     ax[1].set_yticklabels([])
     ax[1].grid(True)
 
-    # Plot 2: MA
-    ax[2].plot(df['Date'], df['TMA_OBV'], label='TMA_OBV', color='red', alpha=0.75)
-    ax[2].plot(df['Date'], df['SMA_OBV'], label='SMA_OBV (12)', color='blue', alpha=0.75)  # SMA line
+    ax[2].plot(df['Date'], df['TMA_ADW'], label='TMA_ADW', color='red', alpha=0.75)
+    ax[2].plot(df['Date'], df['SMA_ADW'], label='SMA_ADW (12)', color='blue', alpha=0.75)  # SMA line
     # signal_one(df, ax, tf)
-    ax[2].fill_between(df['Date'], df['SMA_OBV'], df['TMA_OBV'], where=df['SMA_OBV'] >= df['TMA_OBV'], color='gold',
+    ax[2].fill_between(df['Date'], df['SMA_ADW'], df['TMA_ADW'], where=df['SMA_ADW'] >= df['TMA_ADW'], color='gold',
                        alpha=0.5)
-    ax[2].fill_between(df['Date'], df['SMA_OBV'], df['TMA_OBV'], where=df['SMA_OBV'] < df['TMA_OBV'], color='blue',
+    ax[2].fill_between(df['Date'], df['SMA_ADW'], df['TMA_ADW'], where=df['SMA_ADW'] < df['TMA_ADW'], color='blue',
                        alpha=0.5)
     # signal_one(df, ax[2], tf)
-    ax[2].set_title(f'OBV-{ticker}')
+    ax[2].set_title(f'ADW-{ticker}')
     ax[2].xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
     ax[2].set_yticklabels([])
     ax[2].grid(True)
 
-    # Plot 3: Velocity FIXME: for some reason do not work for 1hour
-    # velocity_color = df['GAUSS_AD_1DERIVATIVE'].apply(lambda x: 'blue' if x < 0 else 'gold')
-    # ax[3].bar(df['Date'], df['GAUSS_AD_1DERIVATIVE'], color=velocity_color.tolist(), width=1)
-    # # signal_one(df, ax[3], tf)
-    # ax[3].set_title('Velocity over Time')
-    # ax[3].grid(True)
+    ax[3].plot(df['Date'], df['TMA_PVT'], label='TMA_PVT', color='red', alpha=0.75)
+    ax[3].plot(df['Date'], df['SMA_PVT'], label='SMA_PVT (12)', color='blue', alpha=0.75)  # SMA line
+    # signal_one(df, ax, tf)
+    ax[3].fill_between(df['Date'], df['SMA_PVT'], df['TMA_PVT'], where=df['SMA_PVT'] >= df['TMA_PVT'], color='gold',
+                       alpha=0.5)
+    ax[3].fill_between(df['Date'], df['SMA_PVT'], df['TMA_PVT'], where=df['SMA_PVT'] < df['TMA_PVT'], color='blue',
+                       alpha=0.5)
+    # signal_one(df, ax[3], tf)
+    ax[3].set_title(f'PVT-{ticker}')
+    ax[3].xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+    ax[3].set_yticklabels([])
+    ax[3].grid(True)
+
+
 
     # Displaying the corrected plots
     plt.tight_layout()
@@ -146,8 +153,8 @@ def is_ad_gold(last_rows):
     return all(row["GAUSS_AD_1DERIVATIVE"] > 0 for row in last_rows)
 
 
-def is_obv_gold(last_rows):
-    return all(row["GAUSS_OBV_1DERIVATIVE"] > 0 for row in last_rows)
+def is_ADW_gold(last_rows):
+    return all(row["GAUSS_ADW_1DERIVATIVE"] > 0 for row in last_rows)
 
 
 def is_price_gold(last_rows):
@@ -163,8 +170,8 @@ def is_ad_gold_crossover(last_rows):
     return last_rows[0]['SMA_AD'] < last_rows[0]['TMA_AD'] and last_rows[1]['SMA_AD'] > last_rows[1]['TMA_AD']
 
 
-def is_obv_gold_crossover(last_rows):
-    return last_rows[0]['SMA_OBV'] < last_rows[0]['TMA_OBV'] and last_rows[1]['SMA_OBV'] > last_rows[1]['TMA_OBV']
+def is_ADW_gold_crossover(last_rows):
+    return last_rows[0]['SMA_ADW'] < last_rows[0]['TMA_ADW'] and last_rows[1]['SMA_ADW'] > last_rows[1]['TMA_ADW']
 
 
 def is_ad_gold_accelerating(rows):
@@ -184,9 +191,9 @@ def only_ad(last_rows):
            is_ad_gold_accelerating(last_rows)
 
 
-def ad_obv(last_rows):
+def ad_ADW(last_rows):
     return is_ad_gold(last_rows) and \
-           ((is_price_gold_crossover(last_rows) and is_obv_gold(last_rows)) or is_obv_gold_crossover(last_rows))
+           ((is_price_gold_crossover(last_rows) and is_ADW_gold(last_rows)) or is_ADW_gold_crossover(last_rows))
 
 
 def signal_one(df, ax=None, tf='day'):
@@ -198,7 +205,7 @@ def signal_one(df, ax=None, tf='day'):
         if index < last_rows_len:
             last_rows.append(row)
         else:
-            if ad_obv(last_rows):
+            if ad_ADW(last_rows):
                 ax.axvline(x=row['Date'], color='green', alpha=0.7)
                 dates.append(row['Date'])
             last_rows = last_rows[1:]
