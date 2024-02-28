@@ -25,7 +25,7 @@ def load_and_prepare_data_daily(file_path, ticker, live):
         # df = pd.read_csv(file_path, skiprows=0).iloc[::-1].reset_index(drop=True)
         df['Date'] = pd.to_datetime(df['Date'])
     else:
-        df = pd.DataFrame(cryptocompare.get_historical_price_hour(ticker, currency='USDT', exchange='Binance'))
+        df = pd.DataFrame(cryptocompare.get_historical_price_day(ticker, currency='USDT', exchange='Binance'))
         if True is df.empty:
             return None
         df['Date'] = pd.to_datetime(df['time'], unit='s')
@@ -64,7 +64,7 @@ def add_indicators_to_df(df):
     high, low, close, volume = df['High'].values, df['Low'].values, df['Close'].values, df['Volume'].values
     df['AD'] = calculate_ad(high, low, close, volume)
     df['SMA_AD'] = exponential_moving_average(df['AD'], 12)
-    df['TMA_AD'] = exponential_moving_average(df['AD'].values, 60)
+    df['TMA_AD'] = exponential_moving_average(df['AD'].values, 50)
 
     df['ADW'] = calculate_ad_williams(high, low, close, df['Open'].values, volume)
     df['SMA_ADW'] = exponential_moving_average(df['ADW'], 12)
@@ -197,7 +197,7 @@ def signal_one(df, ax=None, tf='day'):
 
 
 # Main script
-ticker = 'btc'
+ticker = 'xrp'
 file_path = '../indicators/data/Bitcoin Price (2014-2023)_daily.csv'
 df = load_and_prepare_data_daily(file_path, ticker, True)
 add_indicators_to_df(df)

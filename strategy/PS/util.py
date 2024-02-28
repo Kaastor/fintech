@@ -50,7 +50,7 @@ def triangular_moving_average(values, window):
     simple_ma = pd.Series(values).rolling(window=window, min_periods=1).mean()
     return simple_ma.rolling(window=window, min_periods=1).mean().values
 
-
+# ad = ta.cum(close==high and close==low or high==low ? 0 : ((2 * close - low - high) / (high - low)) * volume)
 def calculate_ad(high, low, close, volume):
     """Calculate Accumulation Distribution (AD) indicator."""
     mfm = ((close - low) - (high - close)) / (high - low)
