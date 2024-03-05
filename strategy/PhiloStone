@@ -1,0 +1,92 @@
+//@version=5
+strategy("PhiloStone", overlay=true, margin_long=5, margin_short=5)
+
+// Input parameters
+ma_length = input.int(title="MA Length", defval=60)
+
+// Kalman MA calculation
+calculate_ma(type, source, length) =>
+    if type == "sma"
+        ta.sma(source, length)
+    else if type == "ema"
+        ta.ema(source, length)
+    else
+        ta.sma(ta.sma(source, length), length) // TMA calculation
+
+// SMMA calculations
+smma_33_low = calculate_ma('sma', low, 33)
+smma_33_high = calculate_ma('sma', high, 33)
+smma_144_low = calculate_ma('sma', low, 144)
+smma_144_high = calculate_ma('sma', high, 144)
+
+// Price MAs
+price_short_ma = calculate_ma('ema', close, 12)
+price_long_ma = calculate_ma('ema', close, 60)
+
+// Calculate AD with Money Flow Multiplier
+mfm = ((close - low) - (high - close)) / (high - low)
+mfm := nz(mfm, 0)
+mfv = mfm * volume
+ad_line = ta.cum(mfv)
+
+// AD MAs
+ad_short_ma = calculate_ma('ema', ad_line, 12)
+ad_long_ma = calculate_ma('ema', ad_line, 60)
+
+// Events
+// Detecting the crossovers
+price_long_signal = ta.crossover(price_short_ma, price_long_ma)
+ad_long_signal = ta.crossover(ad_short_ma, ad_long_ma)
+price_short_signal = ta.crossover(price_long_ma, price_short_ma)
+ad_short_signal = ta.crossover(ad_long_ma, ad_short_ma)
+price_gold = price_short_ma > price_long_ma
+ad_gold = ad_short_ma > ad_long_ma
+
+var int adGoldCrossOccurred = na
+if (ad_long_signal)
+    adGoldCrossOccurred := bar_index
+// AD goes blue and price still blue
+if (ad_short_signal and not price_gold)
+    adGoldCrossOccurred := na
+
+// Strategy execution
+// Buy signals:
+// 1. AD crossover a później price gold crossover
+// 2. Price gold crossover gdy AD gold
+//buySignal = (not na(ad_long_signal) and price_long_signal and bar_index > adGoldCrossOccurred) or (ad_long_signal and price_gold)
+buySignal = (ad_gold and price_long_signal) or (ad_long_signal and price_gold)
+//exitSignal = price_short_signal or ad_short_signal
+exitSignal = not ad_gold and price_short_signal
+
+if (buySignal and strategy.position_size <= 0)
+    strategy.entry("Long", strategy.long)
+
+// Exiting the position
+if (exitSignal)
+    strategy.close("Long")
+
+// Plotting
+plotshape(series=buySignal, style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small, title="Buy Signal")
+plotshape(series=exitSignal, style=shape.triangleup, location=location.belowbar, color=color.orange, size=size.small, title="Exit Signal")
+
+price_short_plt = plot(price_short_ma, "Long Price MA", color.black)
+price_long_plt =plot(price_long_ma, "Short Price MA", color.black)
+plot(smma_33_low, "SMMA 33 Low", color.rgb(0, 91, 165))
+plot(smma_33_high, "SMMA 33 High", color.rgb(0, 91, 165))
+plot(smma_144_low, "SMMA 144 Low", color.rgb(179, 122, 0))
+plot(smma_144_high, "SMMA 144 High", color.rgb(179, 122, 0))
+
+fillColor = price_short_ma > price_long_ma ? color.rgb(228, 217, 100, 30) : color.rgb(127, 134, 245, 30)
+fill(plot1=price_long_plt, plot2=price_short_plt, color=fillColor)
+
+// Relative Price Volatility
+rpv_length = 10
+offset = 0
+src = close
+len = 14
+stddev = ta.stdev(src, rpv_length)
+upper = ta.ema(ta.change(src) <= 0 ? 0 : stddev, len)
+lower = ta.ema(ta.change(src) > 0 ? 0 : stddev, len)
+rvi = upper / (upper + lower) * 100
+
+// plot(rvi, title="RVI", color=#7E57C2, offset = offset)
