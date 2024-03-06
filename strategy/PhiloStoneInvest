@@ -1,5 +1,5 @@
 //@version=5
-strategy("PhiloStone", overlay=true, margin_long=5, margin_short=5)
+strategy("PhiloStone", overlay=true)
 
 // Input parameters
 ma_length = input.int(title="MA Length", defval=60)
@@ -20,7 +20,7 @@ smma_144_low = calculate_ma('sma', low, 144)
 smma_144_high = calculate_ma('sma', high, 144)
 
 // Price MAs
-price_short_ma = calculate_ma('ema', close, 12)
+price_short_ma = calculate_ma('ema', close, 16)
 price_long_ma = calculate_ma('ema', close, 60)
 
 // Calculate AD with Money Flow Multiplier
@@ -30,7 +30,7 @@ mfv = mfm * volume
 ad_line = ta.cum(mfv)
 
 // AD MAs
-ad_short_ma = calculate_ma('ema', ad_line, 12)
+ad_short_ma = calculate_ma('ema', ad_line, 16)
 ad_long_ma = calculate_ma('ema', ad_line, 60)
 
 // Events
@@ -54,9 +54,9 @@ if (ad_short_signal and not price_gold)
 // 1. AD crossover a później price gold crossover
 // 2. Price gold crossover gdy AD gold
 //buySignal = (not na(ad_long_signal) and price_long_signal and bar_index > adGoldCrossOccurred) or (ad_long_signal and price_gold)
-buySignal = (ad_gold and price_long_signal) or (ad_long_signal and price_gold)
+buySignal = ((ad_gold and price_long_signal) or (ad_long_signal and price_gold))
 //exitSignal = price_short_signal or ad_short_signal
-exitSignal = not ad_gold and price_short_signal
+exitSignal = (not ad_gold or not price_gold) and strategy.position_size > 0  //todo 'and' or 'or'?
 
 if (buySignal and strategy.position_size <= 0)
     strategy.entry("Long", strategy.long)
