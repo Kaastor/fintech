@@ -1,0 +1,31 @@
+//@version=5
+strategy("Acceleration AD", overlay=false, calc_on_every_tick = true, fill_orders_on_standard_ohlc = true, initial_capital = 100, commission_value=0.02, default_qty_type=strategy.percent_of_equity)
+f_accdist(high_, low_, close_, _vol) =>
+    mfm = ((close - low) - (high - close)) / (high - low)
+    mfm := nz(mfm, 0)
+    mfv = mfm * volume
+    ta.cum(mfv)
+
+f_ac(high_, low_, close_, vol_) =>
+    ao = ta.ema(ta.ema(f_accdist(high_, low_, close_, vol_),144), 14) - ta.ema(ta.ema(f_accdist(high_, low_, close_, vol_),233), 34)
+    ao - ta.ema(ao,34)
+
+wad_short_ma = ta.wma(ta.wma(ta.wad, 34), 4)
+wad_long_ma = ta.wma(ta.wma(ta.wad, 144), 21)
+
+// Acceleration based on Accelerator Oscillator
+ac = f_ac(high, low, close, volume)
+
+ao_up = ac > 0
+ao_accelerating = ta.change(ac) > 0
+
+// 4h najlepiej działa, na Daily za rzadkie trade'y
+if (strategy.position_size <= 0 and ao_accelerating and ao_up and wad_short_ma > wad_long_ma)
+    strategy.entry("Long", strategy.long)
+if (strategy.position_size > 0 and not ao_accelerating)
+    strategy.close("Long")
+
+wad_short_plt = plot(wad_short_ma, "Long Price MA", color.black)
+wad_long_plt =plot(wad_long_ma, "Short Price MA", color.black)
+fillColor = wad_short_ma > wad_long_ma ? color.rgb(228, 217, 100, 30) : color.rgb(127, 134, 245, 30)
+fill(plot1=wad_long_plt, plot2=wad_short_plt, color=fillColor)

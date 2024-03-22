@@ -1,0 +1,94 @@
+//@version=5
+strategy("Acceleration WAD 4h", overlay=false, calc_on_every_tick = true, fill_orders_on_standard_ohlc = true, initial_capital = 100, commission_value=0.02, default_qty_type=strategy.percent_of_equity)
+
+// Idea: enter trade only when Volatility up
+/// Keltner Channels
+ma_length = 144
+mult = 2
+src = ta.wad
+exp = input(true, "Use Exponential MA", display = display.data_window)
+atrlength = 144
+ma = ta.ema(src, ma_length)
+rangema = ta.atr(atrlength)
+kc_upper = ma + rangema * mult
+kc_lower = ma - rangema * mult
+// Historical Volatility
+length = 144
+annual = 365
+per = timeframe.isintraday or timeframe.isdaily and timeframe.multiplier == 1 ? 1 : 7
+hv = 100 * ta.stdev(math.log(close / close[1]), length) * math.sqrt(annual / per)
+hv := ta.sma(hv, 33)
+hv_acc = ta.change(hv) > 0
+//
+/// Idea: incorporate Volume
+/// Chaikin Oscillator Awesome
+var cumVol = 0.
+cumVol += nz(volume)
+if barstate.islast and cumVol == 0
+    runtime.error("No volume is provided by the data vendor.")
+short = input.int(55, minval=1, title="Fast Length")
+long = input.int(89, minval=1, title="Slow Length")
+chaikin_osc = ta.ema(ta.ema(ta.accdist, short), 17) - ta.ema(ta.ema(ta.accdist, long), 17)
+chaikin_acc = ta.change(chaikin_osc) > 0
+///
+f_wad(high_, low_, close_) =>
+    trueHigh = math.max(high_, close_[1])
+    trueLow = math.min(low_, close_[1])
+    mom = ta.change(close_)
+    gain = (mom > 0) ? close_ - trueLow : (mom < 0) ? close_ - trueHigh : 0
+    ta.cum(gain)
+
+// Highest Score 55/144, but less stable?
+// if price accelecation decaying then OUT. Bo jak jest gold górka to cena już może spadać (stąd strata)
+// Keltner channel? Jak nad to trend
+//MAs closer to each other reduce unnecessary noise
+f_ac_wad(high_, low_, close_) =>
+    ao = ta.ema(ta.ema(f_wad(high_, low_, close_),117), 17) - ta.ema(ta.ema(f_wad(high_, low_, close_),144), 17)
+    ao - ta.ema(ao,13)
+
+f_ao_wad(high_, low_, close_) =>
+    ao = ta.ema(ta.ema(f_wad(high_, low_, close_),117), 17) - ta.ema(ta.ema(f_wad(high_, low_, close_),144), 17)
+    ao
+
+f_ac_price() =>
+    ao = ta.ema(ta.ema(close,117), 7) - ta.ema(ta.ema(close,144), 7)
+    ao - ta.ema(ao,13)
+
+f_ao_price() =>
+    ao = ta.ema(ta.ema(close,117), 7) - ta.ema(ta.ema(close,144), 7)
+    ao
+
+/// Daily Data
+daily_ao = request.security(syminfo.tickerid, "1D", f_ao_wad(high, low, close))
+///
+// make MA a bit faster to turn gold
+wad_short_ma = ta.ema(ta.ema(ta.wad, 117), 17)
+wad_long_ma = ta.ema(ta.ema(ta.wad, 144), 17)
+
+// WAD Smoothed
+price_smoothed = ta.sma(ta.ema(hlc3, 34), 3)
+wad_smoothed = ta.sma(ta.sma(ta.wad, 34), 3)
+plot(wad_smoothed, color=color.red)
+plot(kc_upper, color=color.blue)
+plot(kc_lower, color=color.blue)
+// Acceleration based on Accelerator Oscillator
+ac = f_ac_wad(high, low, close)
+ao = f_ao_wad(high, low, close)
+ac_accelerating = ta.change(ac) > 0
+ao_accelerating = ta.change(ao) > 0
+
+ac_price = f_ac_price()
+ao_price = f_ao_price()
+ac_price_accelerating = ta.change(ac_price) > 0
+ao_price_accelerating = ta.change(ao_price) > 0
+
+// TODO #1: do not open position when Daily not gold or Daily Speed or Acceleration Down (be sure trend is up approach)
+if (strategy.position_size <= 0 and ao_price_accelerating and ac_price_accelerating and wad_short_ma > wad_long_ma and wad_smoothed > kc_upper and chaikin_acc)
+    strategy.entry("Long", strategy.long)
+if (strategy.position_size > 0 and not ao_price_accelerating)
+    strategy.close("Long")
+
+wad_short_plt = plot(wad_short_ma, "Long Price MA", color.black)
+wad_long_plt =plot(wad_long_ma, "Short Price MA", color.black)
+fillColor = wad_short_ma > wad_long_ma ? color.rgb(228, 217, 100, 30) : color.rgb(127, 134, 245, 30)
+fill(plot1=wad_long_plt, plot2=wad_short_plt, color=fillColor)

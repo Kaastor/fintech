@@ -1,4 +1,5 @@
 //@version=5
+// tutaj tez może działąć ta.wad acceleration (daily, weekly)
 strategy("PhiloStone", overlay=true)
 
 // Input parameters

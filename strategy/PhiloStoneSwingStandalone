@@ -1,0 +1,18 @@
+// wad kalman 34, 144 lekko smoothed
+// policzyć długą acceleracje
+// long tylko jak 144 jest up i crossover nastąpił 34->144
+
+
+f_ac(high_, low_, close_, vol_) =>
+    ao = ta.ema(ta.ema(f_wad(high_, low_, close_),122), 21) - ta.ema(ta.ema(f_wad(high_, low_, close_),144), 21)
+    ao - ta.ema(ao,144)
+
+Jeżeli jest green acceleracja to entry, jak się kończy to out. tyle.
+
+pomysł #2
+Ekstrapolacja acceleracji na 1h przypomocy timeframe niżej (15 min?), jeżeli tam 2-3 pod rząd są up, to i na 1h będzei up? coś takiego
+- 15 min jest już > 0 acceleration
+- 1h przeszło w green ale dalej pod
+- zamknij jak 1h red albo 15 min below
+pomysł #3
+jeżeli volumen jest up (AD line gold), ale cena jest blue, to przy następnym przyspieszeniu long
